@@ -78,9 +78,9 @@ class GenericNeuralNet(object):
     Multi-class classification.
     """
 
-    def __init__(self, **kwargs):
-        np.random.seed(0)
-        tf.set_random_seed(0)
+    def __init__(self, seed=0, **kwargs):
+        np.random.seed(seed)
+        tf.set_random_seed(seed)
         
         self.batch_size = kwargs.pop('batch_size')
         self.data_sets = kwargs.pop('data_sets')
@@ -263,14 +263,17 @@ class GenericNeuralNet(object):
     def minibatch_mean_eval(self, ops, data_set):
 
         num_examples = data_set.num_examples
-        assert num_examples % self.batch_size == 0
-        num_iter = int(num_examples / self.batch_size)
+        #assert num_examples % self.batch_size == 0
+        num_iter = (num_examples + self.batch_size - 1) // self.batch_size
+        #num_iter = int(num_examples / self.batch_size)
 
         self.reset_datasets()
 
         ret = []
         for i in xrange(num_iter):
-            feed_dict = self.fill_feed_dict_with_batch(data_set)
+            this_batch_size = min(self.batch_size, num_examples - self.batch_size * i)
+            feed_dict = self.fill_feed_dict_with_batch(data_set, batch_size=this_batch_size)
+            #feed_dict = self.fill_feed_dict_with_batch(data_set)
             ret_temp = self.sess.run(ops, feed_dict=feed_dict)
             
             if len(ret)==0:
@@ -328,8 +331,9 @@ class GenericNeuralNet(object):
 
 
     def update_learning_rate(self, step):
-        assert self.num_train_examples % self.batch_size == 0
-        num_steps_in_epoch = self.num_train_examples / self.batch_size
+        #assert self.num_train_examples % self.batch_size == 0
+        num_steps_in_epoch = (self.num_train_examples + self.batch_size - 1) // self.batch_size
+        #num_steps_in_epoch = self.num_train_examples / self.batch_size
         epoch = step // num_steps_in_epoch
 
         multiplier = 1
@@ -517,12 +521,13 @@ class GenericNeuralNet(object):
 
         num_examples = self.num_train_examples
         if self.mini_batch == True:
-            batch_size = 100
-            assert num_examples % batch_size == 0
+            batch_size = self.batch_size #100
+            #assert num_examples % batch_size == 0
         else:
             batch_size = self.num_train_examples
-
-        num_iter = int(num_examples / batch_size)
+        
+        num_iter = (num_examples + batch_size - 1) // batch_size
+        #num_iter = int(num_examples / batch_size)
 
         self.reset_datasets()
         hessian_vector_val = None

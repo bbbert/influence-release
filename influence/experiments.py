@@ -111,6 +111,9 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh=False,
             [test_idx], 
             np.arange(len(model.data_sets.train.labels)),
             force_refresh=force_refresh)
+        np.savez(
+            '../scr/output/{}_predicted_loss_diffs-test-{}'.format(model.model_name, [test_idx]),
+            predicted_loss_diffs=predicted_loss_diffs)
         indices_to_remove = np.argsort(np.abs(predicted_loss_diffs))[-num_to_remove:]
         predicted_loss_diffs = predicted_loss_diffs[indices_to_remove]
     else:
@@ -165,7 +168,7 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh=False,
         
 
     np.savez(
-        'output/%s_loss_diffs' % model.model_name, 
+        '../scr/output/%s_loss_diffs' % model.model_name, 
         actual_loss_diffs=actual_loss_diffs, 
         predicted_loss_diffs=predicted_loss_diffs)
 
