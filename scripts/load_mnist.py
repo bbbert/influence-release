@@ -1,5 +1,6 @@
 # Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
 
+import os
 import gzip
 import numpy as np
 
@@ -140,6 +141,16 @@ def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
   # perm = perm[:num_to_keep]
   # test_images = test_images[perm, :]
   # test_labels = test_labels[perm]
+
+  savename = '../scr/output/mnist_small_save.npz'
+  if not os.path.exists(savename):
+    np.savez(savename,
+          train_images=train_images,
+          train_labels=train_labels,
+          validation_images=validation_images,
+          validation_labels=validation_labels,
+          test_images=test_images,
+          test_labels=test_labels)
 
   train = DataSet(train_images, train_labels)
   validation = DataSet(validation_images, validation_labels)
