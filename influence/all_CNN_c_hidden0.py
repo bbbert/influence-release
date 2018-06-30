@@ -1,0 +1,142 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals  
+
+import abc
+import sys
+
+import numpy as np
+import pandas as pd
+from sklearn import linear_model, preprocessing, cluster
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.linalg as slin
+import scipy.sparse.linalg as sparselin
+import scipy.sparse as sparse 
+
+import os.path
+import time
+import IPython
+import tensorflow as tf
+import math
+import copy
+
+from influence.genericNeuralNet import GenericNeuralNet, variable, variable_with_weight_decay
+from influence.dataset import DataSet
+
+def conv2d(x, W, r):
+    return tf.nn.conv2d(x, W, strides=[1, r, r, 1], padding='VALID')
+
+def softplus(x):
+    return tf.log(tf.exp(x) + 1)
+
+
+class All_CNN_C_Hidden0(GenericNeuralNet):
+
+    def __init__(self, input_side, input_channels, conv_patch_size, weight_decay, seed=0, **kwargs):
+        self.weight_decay = weight_decay
+        self.input_side = input_side
+        self.input_channels = input_channels
+        self.input_dim = self.input_side * self.input_side * self.input_channels
+        self.conv_patch_size = conv_patch_size
+        #self.hidden1_units = hidden1_units
+        #self.hidden2_units = hidden2_units
+
+        super(All_CNN_C_Hidden0, self).__init__(seed=seed, **kwargs)
+
+
+    def conv2d_softplus(self, input_x, conv_patch_size, input_channels, output_channels, stride):
+        weights = variable_with_weight_decay(
+            'weights', 
+            [conv_patch_size * conv_patch_size * input_channels * output_channels],
+            stddev=2.0 / math.sqrt(float(conv_patch_size * conv_patch_size * input_channels)),
+            wd=self.weight_decay)
+        #biases = variable(
+        #    'biases',
+        #    [output_channels],
+        #    tf.constant_initializer(0.0))
+        weights_reshaped = tf.reshape(weights, [conv_patch_size, conv_patch_size, input_channels, output_channels])
+        hidden = tf.nn.tanh(conv2d(input_x, weights_reshaped, stride))# + biases)
+
+        return hidden
+
+
+
+    def get_all_params(self):
+        all_params = []
+        for layer in ['softmax_linear']:        
+            for var_name in ['weights']:#, 'biases']:
+                temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
+                all_params.append(temp_tensor)      
+        return all_params        
+        
+
+    def warm_retrain(self, start_step, end_step, idx, feed_dict=None):
+        omits = np.zeros(self.num_train_examples,dtype=bool)
+        omits[idx] = True
+        self.data_sets.train.set_omits(omits)
+
+        #print(self.data_sets.train._clone_rng.get_state())
+
+        self.data_sets.train.reset_clone()
+
+        #print(self.data_sets.train._clone_rng.get_state())
+
+        start_time = time.time()
+
+        retrain_losses = []
+        
+        for step in xrange(start_step,end_step):
+            self.update_learning_rate(step)
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone")
+            #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
+            self.sess.run(self.train_op, feed_dict=iter_feed_dict)
+            if step % 20000 == 0:
+                print('Step {} took {} sec'.format(step,time.time() - start_time))
+                start_time = time.time()
+            if step % 1000 == 0:
+                feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
+                retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
+        
+        np.savez('../scr/output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
+        print(retrain_losses[((end_step-start_step)//1000)-1])
+
+        self.data_sets.train.reset_omits()
+
+
+
+    def placeholder_inputs(self):
+        input_placeholder = tf.placeholder(
+            tf.float32, 
+            shape=(None, self.input_dim),
+            name='input_placeholder')
+        labels_placeholder = tf.placeholder(
+            tf.int32,             
+            shape=(None),
+            name='labels_placeholder')
+        return input_placeholder, labels_placeholder
+
+
+    def inference(self, input_x):        
+        last_layer_units = self.input_dim
+        
+        with tf.variable_scope('softmax_linear'):
+
+            weights = variable_with_weight_decay(
+                'weights', 
+                [last_layer_units * self.num_classes],
+                stddev=1.0 / math.sqrt(float(last_layer_units)),
+                wd=self.weight_decay)            
+            #biases = variable(
+            #    'biases',
+            #    [self.num_classes],
+            #    tf.constant_initializer(0.0))
+
+            logits = tf.matmul(input_x, tf.reshape(weights, [last_layer_units, self.num_classes]))# + biases
+            
+        return logits
+
+    def predictions(self, logits):
+        preds = tf.nn.softmax(logits, name='preds')
+        return preds

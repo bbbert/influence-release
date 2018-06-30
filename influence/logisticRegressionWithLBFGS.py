@@ -61,7 +61,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
     def get_all_params(self):
         all_params = []
         for layer in ['softmax_linear']:
-            # for var_name in ['weights', 'biases']:
+            #for var_name in ['weights', 'biases']:
             for var_name in ['weights']:                
                 temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
                 all_params.append(temp_tensor)      
@@ -88,14 +88,14 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
                 wd=self.weight_decay)            
             logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes]))
-            # biases = variable(
+            #biases = variable(
             #     'biases',
             #     [self.num_classes],
             #     tf.constant_initializer(0.0))
-            # logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes])) + biases
+            #logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes])) + biases
 
         self.weights = weights
-        # self.biases = biases
+        #self.biases = biases
 
         return logits
 
@@ -111,14 +111,14 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tf.float32,
             shape=[self.input_dim * self.num_classes],
             name='W_placeholder')
-        # self.b_placeholder = tf.placeholder(
+        #self.b_placeholder = tf.placeholder(
         #     tf.float32,
         #     shape=[self.num_classes],
         #     name='b_placeholder')
         set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
         return [set_weights]
-        # set_biases = tf.assign(self.biases, self.b_placeholder, validate_shape=True)
-        # return [set_weights, set_biases]
+        #set_biases = tf.assign(self.biases, self.b_placeholder, validate_shape=True)
+        #return [set_weights, set_biases]
 
 
 
@@ -135,6 +135,12 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         #     iter_to_switch_to_sgd=1000000,
         #     save_checkpoints=False, verbose=False)
 
+    def warm_retrain(self, start_step, end_step, feed_dict, idx=None):
+
+        self.train_with_LBFGS(
+                feed_dict=feed_dict,
+                save_checkpoints=False,
+                verbose=False)
 
     def train(self, num_steps=None, 
               iter_to_switch_to_batch=None, 

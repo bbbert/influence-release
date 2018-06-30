@@ -6,6 +6,8 @@ from __future__ import unicode_literals
 import abc
 import sys
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from sklearn import linear_model, preprocessing, cluster
@@ -78,10 +80,11 @@ class GenericNeuralNet(object):
     Multi-class classification.
     """
 
-    def __init__(self, seed=0, **kwargs):
+    def __init__(self, seed, test_point=6558, **kwargs):
         np.random.seed(seed)
         tf.set_random_seed(seed)
-        
+        self._seed = seed
+
         self.batch_size = kwargs.pop('batch_size')
         self.data_sets = kwargs.pop('data_sets')
         self.train_dir = kwargs.pop('train_dir', 'output')
@@ -107,7 +110,7 @@ class GenericNeuralNet(object):
         config = tf.ConfigProto()        
         self.sess = tf.Session(config=config)
         K.set_session(self.sess)
-                
+        
         # Setup input
         self.input_placeholder, self.labels_placeholder = self.placeholder_inputs()
         self.num_train_examples = self.data_sets.train.labels.shape[0]
@@ -125,6 +128,10 @@ class GenericNeuralNet(object):
         self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self.loss(
             self.logits, 
             self.labels_placeholder)
+
+        self.losses = []
+        self.losses_fine = []
+        self.test_point = test_point
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False)
@@ -157,6 +164,7 @@ class GenericNeuralNet(object):
         self.grad_influence_wrt_input_op = tf.gradients(self.influence_op, self.input_placeholder)
     
         self.checkpoint_file = os.path.join(self.train_dir, "%s-checkpoint" % self.model_name)
+        self.rngs_file = os.path.join(self.train_dir, "%s-rngs-checkpoint" % self.model_name)
 
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
         self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
@@ -194,7 +202,6 @@ class GenericNeuralNet(object):
             if data_set is not None:
                 data_set.reset_batch()
 
-
     def fill_feed_dict_with_all_ex(self, data_set):
         feed_dict = {
             self.input_placeholder: data_set.x,
@@ -204,8 +211,8 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_with_all_but_one_ex(self, data_set, idx_to_remove):
-        num_examples = data_set.x.shape[0]
-        idx = np.array([True] * num_examples, dtype=bool)
+        warnings.warn("Use omits instead of fill with all but one", DeprecationWarning)
+        idx = np.array([True] * data_set.num_examples, dtype=bool)
         idx[idx_to_remove] = False
         feed_dict = {
             self.input_placeholder: data_set.x[idx, :],
@@ -214,13 +221,14 @@ class GenericNeuralNet(object):
         return feed_dict
 
 
-    def fill_feed_dict_with_batch(self, data_set, batch_size=0):
+    def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size=0, verbose=False):
         if batch_size is None:
             return self.fill_feed_dict_with_all_ex(data_set)
         elif batch_size == 0:
             batch_size = self.batch_size
     
-        input_feed, labels_feed = data_set.next_batch(batch_size)                              
+        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng, verbose=verbose) ####
+
         feed_dict = {
             self.input_placeholder: input_feed,
             self.labels_placeholder: labels_feed,            
@@ -267,12 +275,12 @@ class GenericNeuralNet(object):
         num_iter = (num_examples + self.batch_size - 1) // self.batch_size
         #num_iter = int(num_examples / self.batch_size)
 
-        self.reset_datasets()
+        data_set.reset_orig()
 
         ret = []
         for i in xrange(num_iter):
             this_batch_size = min(self.batch_size, num_examples - self.batch_size * i)
-            feed_dict = self.fill_feed_dict_with_batch(data_set, batch_size=this_batch_size)
+            feed_dict = self.fill_feed_dict_with_batch(data_set, which_rng="orig", batch_size=this_batch_size)
             #feed_dict = self.fill_feed_dict_with_batch(data_set)
             ret_temp = self.sess.run(ops, feed_dict=feed_dict)
             
@@ -325,8 +333,9 @@ class GenericNeuralNet(object):
 
 
 
-    def retrain(self, num_steps, feed_dict):        
-        for step in xrange(num_steps):   
+    def warm_retrain(self, start_step, end_step, feed_dict=None, idx=None):        
+        for step in xrange(start_step,end_step):
+            self.update_learning_rate(step)
             self.sess.run(self.train_op, feed_dict=feed_dict)
 
 
@@ -352,21 +361,24 @@ class GenericNeuralNet(object):
     def train(self, num_steps, 
               iter_to_switch_to_batch=20000, 
               iter_to_switch_to_sgd=40000,
-              save_checkpoints=True, verbose=True):
+              save_checkpoints=True, verbose=True, track_losses=True):
         """
         Trains a model for a specified number of steps.
         """
         if verbose: print('Training for %s steps' % num_steps)
 
-        sess = self.sess            
+        sess = self.sess
+
+        self.data_sets.train.reset_rng()
 
         for step in xrange(num_steps):
             self.update_learning_rate(step)
 
             start_time = time.time()
 
-            if step < iter_to_switch_to_batch:                
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train)
+            if step < iter_to_switch_to_batch:
+                printing = (step >= 2000)
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", verbose=printing) #####
                 _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
                 
             elif step < iter_to_switch_to_sgd:
@@ -386,13 +398,64 @@ class GenericNeuralNet(object):
 
             # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
-                if save_checkpoints: self.saver.save(sess, self.checkpoint_file, global_step=step)
+                if save_checkpoints:
+                    self.save(step)
                 if verbose: self.print_model_eval()
+
+            if track_losses:
+                if step < 100 or step % 1000 == 0:
+                    feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
+                    if step < 100:
+                        self.losses_fine.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+                    if step % 1000 == 0:
+                        self.losses.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+
+
+        print(self.losses_fine)
+        print(self.losses)
+        #print(self.data_sets.train._rng.get_state())
+
+    def save(self, step):
+        self.saver.save(self.sess, self.checkpoint_file, global_step=step)
+        states = [dataset._rng.get_state() for dataset in self.data_sets]
+        arrs = [state[1] for state in states]
+        poss = [state[2] for state in states]
+        gausses = [state[3] for state in states]
+        caches = [state[4] for state in states]
+        batch_indices = [dataset._batch_indices for dataset in self.data_sets]
+        epoch_indices = [dataset._index_in_epoch for dataset in self.data_sets]
+        np.savez(self.rngs_file, arrs=arrs,poss=poss,gausses=gausses,caches=caches,
+                batch_indices=batch_indices,epoch_indices=epoch_indices)
+        #print("saved to {}".format(self.rngs_file))
+
+    def get_all_losses(self):
+        return self.losses, self.losses_fine
 
 
     def load_checkpoint(self, iter_to_load, do_checks=True):
         checkpoint_to_load = "%s-%s" % (self.checkpoint_file, iter_to_load) 
         self.saver.restore(self.sess, checkpoint_to_load)
+        #print("looking for {}".format(self.rngs_file))
+        if os.path.exists(self.rngs_file+".npz"):
+            f = np.load(self.rngs_file + ".npz")
+            name = 'MT19937'
+            arrs = f['arrs']
+            poss = f['poss']
+            gausses = f['gausses']
+            caches = f['caches']
+            batch_indices = f['batch_indices']
+            epoch_indices = f['epoch_indices']
+            for i, dataset in enumerate(self.data_sets):
+                dataset._rng.set_state((name, arrs[i], poss[i], gausses[i], caches[i]))
+                dataset._batch_indices = batch_indices[i]
+                dataset._index_in_epoch = epoch_indices[i]
+        else:
+            print("=======")
+            print("WARNING")
+            print("NOT RELOADING DATASET RANDOM STATES!!!")
+            print("=======")
+
+        #print(self.data_sets.train._rng.get_state())
 
         if do_checks:
             print('Model %s loaded. Sanity checks ---' % checkpoint_to_load)
@@ -485,6 +548,8 @@ class GenericNeuralNet(object):
         inverse_hvp = None
         print_iter = recursion_depth / 10
 
+        self.data_sets.train.reset_orig()
+
         for i in range(num_samples):
             # samples = np.random.choice(self.num_train_examples, size=recursion_depth)
            
@@ -497,7 +562,7 @@ class GenericNeuralNet(object):
                 #   images_placeholder, 
                 #   labels_placeholder, 
                 #   samples[j])   
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, batch_size=batch_size)
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="orig", batch_size=batch_size)
 
                 feed_dict = self.update_feed_dict_with_v_placeholder(feed_dict, cur_estimate)
                 hessian_vector_val = self.sess.run(self.hessian_vector, feed_dict=feed_dict)
@@ -529,10 +594,11 @@ class GenericNeuralNet(object):
         num_iter = (num_examples + batch_size - 1) // batch_size
         #num_iter = int(num_examples / batch_size)
 
-        self.reset_datasets()
+        self.data_sets.train.reset_orig()
+
         hessian_vector_val = None
         for i in xrange(num_iter):
-            feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, batch_size=batch_size)
+            feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="orig", batch_size=batch_size)
             # Can optimize this
             feed_dict = self.update_feed_dict_with_v_placeholder(feed_dict, v)
             hessian_vector_val_temp = self.sess.run(self.hessian_vector, feed_dict=feed_dict)
@@ -812,26 +878,29 @@ class GenericNeuralNet(object):
         return grad_influence_wrt_input_val
 
 
-    def update_train_x(self, new_train_x):
+    def override_train_x(self, new_train_x):
+        raise DeprecationWarning("Use dataset's self._omit instead of overriding entirely")
         assert np.all(new_train_x.shape == self.data_sets.train.x.shape)
+        self.reset_datasets()
         new_train = DataSet(new_train_x, np.copy(self.data_sets.train.labels))
         self.data_sets = base.Datasets(train=new_train, validation=self.data_sets.validation, test=self.data_sets.test)
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)                
+
+
+    def override_train_x_y(self, new_train_x, new_train_y):
+        raise DeprecationWarning("Use dataset's self._omit instead of overriding entirely")
         self.reset_datasets()
-
-
-    def update_train_x_y(self, new_train_x, new_train_y):
         new_train = DataSet(new_train_x, new_train_y)
         self.data_sets = base.Datasets(train=new_train, validation=self.data_sets.validation, test=self.data_sets.test)
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)                
-        self.num_train_examples = len(new_train_y)
-        self.reset_datasets()        
+        self.num_train_examples = len(new_train_y)      
 
 
-    def update_test_x_y(self, new_test_x, new_test_y):
+    def override_test_x_y(self, new_test_x, new_test_y):
+        raise DeprecationWarning("Use dataset's self._omit instead of overriding entirely")
+        self.reset_dataset()
         new_test = DataSet(new_test_x, new_test_y)
         self.data_sets = base.Datasets(train=self.data_sets.train, validation=self.data_sets.validation, test=new_test)
         self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)                
         self.num_test_examples = len(new_test_y)
-        self.reset_datasets()        
 

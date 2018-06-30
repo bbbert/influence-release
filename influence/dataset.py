@@ -1,10 +1,31 @@
 # Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
 
 import numpy as np
+import copy, warnings
 
 class DataSet(object):
 
-    def __init__(self, x, labels):
+    def reset_rng(self):
+        print("Reset attempted")
+        self._rng.seed(self._randomState)
+
+    def reset_orig(self):
+        self._orig_rng.seed(self._randomState)
+
+    def reset_clone(self):
+        self._clone_rng = copy.deepcopy(self._rng)
+
+    def reset_rngs(self):
+        self.reset_rng()
+        self.reset_orig()
+        self.reset_clone()
+
+    def reset_indices(self):
+        self._index_in_epoch = 0
+        self._batch_indices = np.arange(self._num_examples)
+
+    # N.B.: omits is a boolean vector where True = omit, False = keep 
+    def __init__(self, x, labels, randomState, omits):
 
         if len(x.shape) > 2:
             x = np.reshape(x, [x.shape[0], -1])
@@ -14,11 +35,15 @@ class DataSet(object):
         x = x.astype(np.float32)
 
         self._x = x
-        self._x_batch = np.copy(x)
+
         self._labels = labels
-        self._labels_batch = np.copy(labels)
         self._num_examples = x.shape[0]
-        self._index_in_epoch = 0
+        self.reset_indices()        
+        self._randomState = randomState
+        self._rng = np.random.RandomState(self._randomState)
+        self._orig_rng = np.random.RandomState(self._randomState)
+        self.reset_clone()
+        self._omits = omits
 
     @property
     def x(self):
@@ -32,12 +57,33 @@ class DataSet(object):
     def num_examples(self):
         return self._num_examples
 
-    def reset_batch(self):
-        self._index_in_epoch = 0        
-        self._x_batch = np.copy(self._x)
-        self._labels_batch = np.copy(self._labels)
+    @property
+    def omits(self):
+        return self._omits
 
-    def next_batch(self, batch_size):
+    @property
+    def randomState(self):
+        return self._randomState
+
+    def set_randomState_and_reset_rngs(self,randomState):
+        self._randomState = randomState
+        self.reset_rngs()
+        self.reset_indices()
+
+    def reset_omits(self):
+        self._omits = np.zeros(self._num_examples, dtype=bool)
+
+    def set_omits(self, new_omits):
+        self._omits = new_omits
+
+    def reset_batch(self):
+        raise DeprecationWarning("You probably don't want to reset all: reset_orig for eval funcs and set_omits for overriding/updating")
+        self._index_in_epoch = 0        
+        self.reset_indices()
+        self.reset_rngs()
+        self.reset_omits()
+
+    def next_batch(self, batch_size, which_rng, verbose=False):
         assert batch_size <= self._num_examples
 
         start = self._index_in_epoch
@@ -46,16 +92,37 @@ class DataSet(object):
 
             # Shuffle the data
             perm = np.arange(self._num_examples)
-            np.random.shuffle(perm)
-            self._x_batch = self._x_batch[perm, :]
-            self._labels_batch = self._labels_batch[perm]
+            if which_rng == "clone":
+                self._clone_rng.shuffle(perm)
+            elif which_rng == "orig":
+                self._orig_rng.shuffle(perm)
+            elif which_rng == "normal":
+                self._rng.shuffle(perm)
+            else:
+                raise ValueError("Invalid rng type")
+            
+            self._batch_indices = self._batch_indices[perm]
 
             # Start next epoch
             start = 0
             self._index_in_epoch = batch_size
 
         end = self._index_in_epoch
-        return self._x_batch[start:end], self._labels_batch[start:end]
+
+        # Extract x's and labels from batch_indices
+
+        selected_indices = self._batch_indices[start:end]
+
+        selected_indices = selected_indices[~self._omits[selected_indices]]
+        #if which_rng=="normal" and verbose: #####
+        #    print(selected_indices[0])
+        #if which_rng == "clone":
+        #    print(selected_indices[0])
+        #if len(selected_indices) != batch_size:
+        #    print("Omitted something")
+
+
+        return self._x[selected_indices], self._labels[selected_indices]
 
 
 def filter_dataset(X, Y, pos_class, neg_class):

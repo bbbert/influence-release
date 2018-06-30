@@ -20,6 +20,7 @@ import time
 import IPython
 import tensorflow as tf
 import math
+import copy
 
 from influence.genericNeuralNet import GenericNeuralNet, variable, variable_with_weight_decay
 from influence.dataset import DataSet
@@ -71,13 +72,38 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         return all_params        
         
 
-    def retrain(self, num_steps, feed_dict):        
+    def warm_retrain(self, start_step, end_step, idx, feed_dict=None):
+        omits = np.zeros(self.num_train_examples,dtype=bool)
+        omits[idx] = True
+        self.data_sets.train.set_omits(omits)
 
-        retrain_dataset = DataSet(feed_dict[self.input_placeholder], feed_dict[self.labels_placeholder])
+        #print(self.data_sets.train._clone_rng.get_state())
 
-        for step in xrange(num_steps):   
-            iter_feed_dict = self.fill_feed_dict_with_batch(retrain_dataset)
+        self.data_sets.train.reset_clone()
+
+        #print(self.data_sets.train._clone_rng.get_state())
+
+        start_time = time.time()
+
+        retrain_losses = []
+        
+        for step in xrange(start_step,end_step):
+            self.update_learning_rate(step)
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone")
+            #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
+            if step % 20000 == 0:
+                print('Step {} took {} sec'.format(step,time.time() - start_time))
+                start_time = time.time()
+            if step % 1000 == 0:
+                feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
+                retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
+        
+        np.savez('../scr/output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
+        print(retrain_losses[((end_step-start_step)//1000)-1])
+
+        self.data_sets.train.reset_omits()
+
 
 
     def placeholder_inputs(self):
