@@ -75,20 +75,31 @@ def normalize_vector(v):
     return norm_v, norm_val
 
 
-class GenericNeuralNet(object):
+class GenericModel(object):
     """
     Multi-class classification.
     """
 
-    def __init__(self, seed, test_point=6558, **kwargs):
-        np.random.seed(seed)
-        tf.set_random_seed(seed)
-        self._seed = seed
+    def __init__(self, initialization_seed, batching_seed, test_point=6558, **kwargs):
+        np.random.seed(batching_seed)
+        
+        # This sets the global tf random seed. There are also operation-level random
+        # seeds, which we can sort of ignore if we set the global seed. However,
+        # it doesn't seem possible to get the intermediate internal state of this tf
+        # seed, so that can cause an issue when trying to restore a model midway.
+        # In current code, this doesn't matter because tf randomness is only used
+        # for variable initialization--just remember to always initialize in the same
+        # order! And if tf randomness plays a role in later features, we may want to
+        # control the op-level seeds.
+        tf.set_random_seed(initialization_seed)
+        
+        self._batching_seed = batching_seed
+        self._initialization_seed = initalization_seed
 
         self.batch_size = kwargs.pop('batch_size')
         self.data_sets = kwargs.pop('data_sets')
         self.train_dir = kwargs.pop('train_dir', 'output')
-        log_dir = kwargs.pop('log_dir', 'log')
+        self.log_dir = kwargs.pop('log_dir', 'log') #unused
         self.model_name = kwargs.pop('model_name')
         self.num_classes = kwargs.pop('num_classes')
         self.initial_learning_rate = kwargs.pop('initial_learning_rate')        
@@ -129,10 +140,6 @@ class GenericNeuralNet(object):
             self.logits, 
             self.labels_placeholder)
 
-        self.losses = []
-        self.losses_fine = []
-        self.test_point = test_point
-
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False)
         self.learning_rate_placeholder = tf.placeholder(tf.float32)
@@ -145,6 +152,9 @@ class GenericNeuralNet(object):
 
         # Setup misc
         self.saver = tf.train.Saver()
+        self.test_losses = []
+        self.test_losses_fine = []
+        self.test_point = test_point
 
         # Setup gradients and Hessians
         self.params = self.get_all_params()
@@ -202,7 +212,11 @@ class GenericNeuralNet(object):
             if data_set is not None:
                 data_set.reset_batch()
 
+    def warn_about_fill_feed_dict(self):
+        warnings.warn("Use a dataset object and its omits instead of fill_feed_dict", DeprecationWarning)
+
     def fill_feed_dict_with_all_ex(self, data_set):
+        self.warn_about_fill_feed_dict()
         feed_dict = {
             self.input_placeholder: data_set.x,
             self.labels_placeholder: data_set.labels
@@ -211,7 +225,7 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_with_all_but_one_ex(self, data_set, idx_to_remove):
-        warnings.warn("Use omits instead of fill with all but one", DeprecationWarning)
+        self.warn_about_fill_feed_dict()
         idx = np.array([True] * data_set.num_examples, dtype=bool)
         idx[idx_to_remove] = False
         feed_dict = {
@@ -222,12 +236,13 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size=0, verbose=False):
+        self.warn_about_fill_feed_dict()
         if batch_size is None:
             return self.fill_feed_dict_with_all_ex(data_set)
         elif batch_size == 0:
             batch_size = self.batch_size
     
-        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng, verbose=verbose) ####
+        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng, verbose=verbose)
 
         feed_dict = {
             self.input_placeholder: input_feed,
@@ -237,6 +252,7 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_with_some_ex(self, data_set, target_indices):
+        self.warn_about_fill_feed_dict()
         input_feed = data_set.x[target_indices, :].reshape(len(target_indices), -1)
         labels_feed = data_set.labels[target_indices].reshape(-1)
         feed_dict = {
@@ -247,6 +263,7 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_with_one_ex(self, data_set, target_idx):
+        self.warn_about_fill_feed_dict()
         input_feed = data_set.x[target_idx, :].reshape(1, -1)
         labels_feed = data_set.labels[target_idx].reshape(-1)
         feed_dict = {
@@ -257,6 +274,7 @@ class GenericNeuralNet(object):
 
 
     def fill_feed_dict_manual(self, X, Y):
+        self.warn_about_fill_feed_dict()
         X = np.array(X)
         Y = np.array(Y) 
         input_feed = X.reshape(len(Y), -1)
@@ -377,8 +395,7 @@ class GenericNeuralNet(object):
             start_time = time.time()
 
             if step < iter_to_switch_to_batch:
-                printing = (step >= 2000)
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", verbose=printing) #####
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", verbose=printing)
                 _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
                 
             elif step < iter_to_switch_to_sgd:
@@ -406,14 +423,13 @@ class GenericNeuralNet(object):
                 if step < 100 or step % 1000 == 0:
                     feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
                     if step < 100:
-                        self.losses_fine.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+                        self.test_losses_fine.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
                     if step % 1000 == 0:
-                        self.losses.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+                        self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
 
 
-        print(self.losses_fine)
-        print(self.losses)
-        #print(self.data_sets.train._rng.get_state())
+        print(self.test_losses_fine)
+        print(self.test_losses)
 
     def save(self, step):
         self.saver.save(self.sess, self.checkpoint_file, global_step=step)
@@ -426,16 +442,15 @@ class GenericNeuralNet(object):
         epoch_indices = [dataset._index_in_epoch for dataset in self.data_sets]
         np.savez(self.rngs_file, arrs=arrs,poss=poss,gausses=gausses,caches=caches,
                 batch_indices=batch_indices,epoch_indices=epoch_indices)
-        #print("saved to {}".format(self.rngs_file))
+        np.savez(self.test_losses_file, test_losses=self.test_losses, test_losses_fine=self.test_losses_fine)
 
     def get_all_losses(self):
-        return self.losses, self.losses_fine
+        return self.test_losses, self.test_losses_fine
 
 
     def load_checkpoint(self, iter_to_load, do_checks=True):
         checkpoint_to_load = "%s-%s" % (self.checkpoint_file, iter_to_load) 
         self.saver.restore(self.sess, checkpoint_to_load)
-        #print("looking for {}".format(self.rngs_file))
         if os.path.exists(self.rngs_file+".npz"):
             f = np.load(self.rngs_file + ".npz")
             name = 'MT19937'
@@ -450,12 +465,14 @@ class GenericNeuralNet(object):
                 dataset._batch_indices = batch_indices[i]
                 dataset._index_in_epoch = epoch_indices[i]
         else:
-            print("=======")
-            print("WARNING")
-            print("NOT RELOADING DATASET RANDOM STATES!!!")
-            print("=======")
+            warnings.warn("NOT RELOADING DATASET RANDOM STATES")
 
-        #print(self.data_sets.train._rng.get_state())
+        if (os.path.exists(self.test_losses_file+".npz")):
+            f = np.load(self.test_losses_file+".npz")
+            self.test_losses = f['test_losses']
+            self.test_losses_fine = f['test_losses_fine']
+        else:
+            warnings.warn("NOT RELOADING TRACKED TEST LOSSES")
 
         if do_checks:
             print('Model %s loaded. Sanity checks ---' % checkpoint_to_load)
@@ -465,6 +482,9 @@ class GenericNeuralNet(object):
     def get_train_op(self, total_loss, global_step, learning_rate):
         """
         Return train_op
+
+        WARNING: does the momentum carrying over here cause problems?
+        Probably is saved by the saver but still...
         """
         optimizer = tf.train.AdamOptimizer(learning_rate)
         train_op = optimizer.minimize(total_loss, global_step=global_step)
@@ -685,7 +705,7 @@ class GenericNeuralNet(object):
         elif loss_type == 'adversarial_loss':
             op = self.grad_adversarial_loss_op
         else:
-            raise ValueError, 'Loss must be specified'
+            raise ValueError('Loss must be specified')
 
         if test_indices is not None:
             num_iter = int(np.ceil(len(test_indices) / batch_size))
@@ -721,10 +741,10 @@ class GenericNeuralNet(object):
         # because mini-batching permutes dataset order
 
         if train_idx is None: 
-            if (X is None) or (Y is None): raise ValueError, 'X and Y must be specified if using phantom points.'
-            if X.shape[0] != len(Y): raise ValueError, 'X and Y must have the same length.'
+            if (X is None) or (Y is None): raise ValueError('X and Y must be specified if using phantom points.')
+            if X.shape[0] != len(Y): raise ValueError('X and Y must have the same length.')
         else:
-            if (X is not None) or (Y is not None): raise ValueError, 'X and Y cannot be specified if train_idx is specified.'
+            if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
         test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, loss_type=loss_type)
 
@@ -765,7 +785,7 @@ class GenericNeuralNet(object):
             num_to_remove = len(train_idx)
             predicted_loss_diffs = np.zeros([num_to_remove])
             for counter, idx_to_remove in enumerate(train_idx):            
-                single_train_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.train, idx_to_remove)      
+                single_train_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.train, idx_to_remove)
                 train_grad_loss_val = self.sess.run(self.grad_total_loss_op, feed_dict=single_train_feed_dict)
                 predicted_loss_diffs[counter] = np.dot(np.concatenate(inverse_hvp), np.concatenate(train_grad_loss_val)) / self.num_train_examples
                 
