@@ -80,33 +80,31 @@ class GenericNeuralNet(object):
     Multi-class classification.
     """
 
-    def __init__(self, initialization_seed, batching_seed, test_point, **kwargs):
-        np.random.seed(batching_seed)
+    def __init__(self, config_dict):
         
-        # This sets the global tf random seed. There are also operation-level random
-        # seeds, which we can sort of ignore if we set the global seed. However,
-        # it doesn't seem possible to get the intermediate internal state of this tf
-        # seed, so that can cause an issue when trying to restore a model midway.
-        # In current code, this doesn't matter because tf randomness is only used
-        # for variable initialization--just remember to always initialize in the same
-        # order! And if tf randomness plays a role in later features, we may want to
-        # control the op-level seeds.
-        tf.set_random_seed(initialization_seed)
-        
-        self._batching_seed = batching_seed
-        self._initialization_seed = initialization_seed
+        gen_dict = config_dict['gen']
 
-        self.batch_size = kwargs.pop('batch_size')
-        self.data_sets = kwargs.pop('data_sets')
-        self.train_dir = kwargs.pop('train_dir', 'output')
-        self.log_dir = kwargs.pop('log_dir', 'log') #unused
-        self.model_name = kwargs.pop('model_name')
-        self.num_classes = kwargs.pop('num_classes')
-        self.initial_learning_rate = kwargs.pop('initial_learning_rate')        
-        self.decay_epochs = kwargs.pop('decay_epochs')
-        self.keep_probs = kwargs.pop('keep_probs')
-        self.mini_batch = kwargs.pop('mini_batch')
-        self.damping = kwargs.pop('damping')
+        self._batching_seed = gen_dict['batching_seed']
+        self._initialization_seed = gen_dict['initialization_seed']
+
+        self.batch_size = gen_dict['batch_size']
+        self.data_sets = gen_dict['data_sets']
+        self.train_dir = gen_dict['train_dir']
+        self.log_dir = gen_dict['log_dir'] #unused
+        self.model_name = gen_dict['model_name']
+        self.num_classes = gen_dict['num_classes']
+        self.initial_learning_rate = gen_dict['initial_learning_rate']
+        self.decay_epochs = gen_dict['decay_epochs']
+        self.keep_probs = gen_dict['keep_probs']
+        self.mini_batch = gen_dict['mini_batch']
+        self.damping = gen_dict['damping']
+        self.test_point = gen_dict['test_point']
+
+
+        # Default params for certain functions
+        self.lissa_params = gen_dict['lissa_params']
+        self.fmin_ncg_params = gen_dict['fmin_ncg_params']
+        self.test_grad_batch_size = gen_dict['test_grad_batch_size']
 
         #if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
         
@@ -117,7 +115,19 @@ class GenericNeuralNet(object):
         
         #if 'damping' in kwargs: self.damping = kwargs.pop('damping')
         #else: self.damping = 0.0
+         
+        np.random.seed(_batching_seed)
         
+        # This sets the global tf random seed. There are also operation-level random
+        # seeds, which we can sort of ignore if we set the global seed. However,
+        # it doesn't seem possible to get the intermediate internal state of this tf
+        # seed, so that can cause an issue when trying to restore a model midway.
+        # In current code, this doesn't matter because tf randomness is only used
+        # for variable initialization--just remember to always initialize in the same
+        # order! And if tf randomness plays a role in later features, we may want to
+        # control the op-level seeds.
+        tf.set_random_seed(_initialization_seed)
+       
         if not os.path.exists(self.train_dir):
             os.makedirs(self.train_dir)
 
@@ -159,7 +169,7 @@ class GenericNeuralNet(object):
         self.saver = tf.train.Saver()
         self.test_losses = []
         self.test_losses_fine = []
-        self.test_point = test_point
+
 
         # Setup gradients and Hessians
         self.params = self.get_all_params()
@@ -193,11 +203,6 @@ class GenericNeuralNet(object):
         if self.adversarial_loss is not None:
             self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
 
-
-        # Default params for certain functions
-        self.lissa_params = {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion':10000}
-        self.fmin_ncg_params = {'avextol':1e-8,'maxiter':100}
-        self.test_grad_batch_size = 100
 
     def get_vec_to_list_fn(self):
         params_val = self.sess.run(self.params)
