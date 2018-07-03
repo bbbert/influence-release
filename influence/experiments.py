@@ -85,9 +85,9 @@ def viz_top_influential_examples(model, test_idx):
 
 
 
-def test_retraining(model, test_idx, iter_to_load, force_refresh=False, 
-                    num_to_remove=50, num_steps=1000, random_seed=17,
-                    remove_type='random', indices_to_remove=None, do_sanity_checks=True):
+def test_retraining(model, test_idx, iter_to_load, force_refresh, 
+                    num_to_remove, num_steps, random_seed,
+                    remove_type, indices_to_remove, do_sanity_checks=True):
 
     np.random.seed(random_seed)
 
@@ -134,11 +134,10 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh=False,
     train_loss_val = sess.run(model.total_loss, feed_dict=model.all_train_feed_dict)
     # train_loss_val = model.minibatch_mean_eval([model.total_loss], model.data_sets.train)[0]
     if do_sanity_checks:
-        model.warm_retrain(start_step=iter_to_load+1,end_step=iter_to_load+1+num_steps, feed_dict=model.all_train_feed_dict)
+        model.warm_retrain(start_step=iter_to_load+1,end_step=iter_to_load+1+num_steps, feed_dict=model.all_train_feed_dict,idx=None)
         retrained_test_loss_val = sess.run(model.loss_no_reg, feed_dict=test_feed_dict)
         retrained_train_loss_val = sess.run(model.total_loss, feed_dict=model.all_train_feed_dict)
         # retrained_train_loss_val = model.minibatch_mean_eval([model.total_loss], model.data_sets.train)[0]
-
         model.load_checkpoint(iter_to_load, do_checks=False)
 
         print('Sanity check: what happens if you train the model a bit more?')
@@ -183,9 +182,9 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh=False,
     print(predicted_loss_diffs)
     return actual_loss_diffs, predicted_loss_diffs, indices_to_remove
 
-def test_only_retraining(model, test_idx, iter_to_load, force_refresh=False, 
-                    num_to_remove=50, num_steps=1000, random_seed=17,
-                    remove_type='manual', indices_to_remove=None, do_sanity_checks=True):
+def test_only_retraining(model, test_idx, iter_to_load, force_refresh, 
+                    num_to_remove, num_steps, random_seed,
+                    remove_type, indices_to_remove, do_sanity_checks=True):
 
     if remove_type != "manual":
         return
@@ -202,7 +201,8 @@ def test_only_retraining(model, test_idx, iter_to_load, force_refresh=False,
     for counter, idx_to_remove in enumerate(indices_to_remove):
         print("=== #%s ===" % counter)
         print('Retraining without train_idx %s (label %s):' % (idx_to_remove, model.data_sets.train.labels[idx_to_remove]))
-        model.warm_retrain(start_step=iter_to_load+1,end_step=iter_to_load+1+num_steps,idx=idx_to_remove)
+        feed_dict = model.fill_feed_dict_with_all_but_one_ex(model.data_sets.train,idx_to_remove)
+        model.warm_retrain(start_step=iter_to_load+1,end_step=iter_to_load+1+num_steps,idx=idx_to_remove,feed_dict=feed_dict)
         retrained_test_loss_val, retrained_params_val = sess.run([model.loss_no_reg, model.params], feed_dict=test_feed_dict)
         actual_loss_diffs[counter] = retrained_test_loss_val - test_loss_val
         print('Loss on test idx with original model    : %s' % test_loss_val)

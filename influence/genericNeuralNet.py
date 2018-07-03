@@ -75,12 +75,12 @@ def normalize_vector(v):
     return norm_v, norm_val
 
 
-class GenericModel(object):
+class GenericNeuralNet(object):
     """
     Multi-class classification.
     """
 
-    def __init__(self, initialization_seed, batching_seed, test_point=6558, **kwargs):
+    def __init__(self, initialization_seed, batching_seed, test_point, **kwargs):
         np.random.seed(batching_seed)
         
         # This sets the global tf random seed. There are also operation-level random
@@ -94,7 +94,7 @@ class GenericModel(object):
         tf.set_random_seed(initialization_seed)
         
         self._batching_seed = batching_seed
-        self._initialization_seed = initalization_seed
+        self._initialization_seed = initialization_seed
 
         self.batch_size = kwargs.pop('batch_size')
         self.data_sets = kwargs.pop('data_sets')
@@ -104,15 +104,19 @@ class GenericModel(object):
         self.num_classes = kwargs.pop('num_classes')
         self.initial_learning_rate = kwargs.pop('initial_learning_rate')        
         self.decay_epochs = kwargs.pop('decay_epochs')
+        self.keep_probs = kwargs.pop('keep_probs')
+        self.mini_batch = kwargs.pop('mini_batch')
+        self.damping = kwargs.pop('damping')
 
-        if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
-        else: self.keep_probs = None
+        #if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
         
-        if 'mini_batch' in kwargs: self.mini_batch = kwargs.pop('mini_batch')        
-        else: self.mini_batch = True
+        #else: self.keep_probs = None
         
-        if 'damping' in kwargs: self.damping = kwargs.pop('damping')
-        else: self.damping = 0.0
+        #if 'mini_batch' in kwargs: self.mini_batch = kwargs.pop('mini_batch')        
+        #else: self.mini_batch = True
+        
+        #if 'damping' in kwargs: self.damping = kwargs.pop('damping')
+        #else: self.damping = 0.0
         
         if not os.path.exists(self.train_dir):
             os.makedirs(self.train_dir)
@@ -130,6 +134,7 @@ class GenericModel(object):
         # Setup inference and training
         if self.keep_probs is not None:
             self.keep_probs_placeholder = tf.placeholder(tf.float32, shape=(2))
+            warnings.warn("No longer using keep_probs", DeprecationWarning)
             self.logits = self.inference(self.input_placeholder, self.keep_probs_placeholder)
         elif hasattr(self, 'inference_needs_labels'):            
             self.logits = self.inference(self.input_placeholder, self.labels_placeholder)
@@ -175,6 +180,7 @@ class GenericModel(object):
     
         self.checkpoint_file = os.path.join(self.train_dir, "%s-checkpoint" % self.model_name)
         self.rngs_file = os.path.join(self.train_dir, "%s-rngs-checkpoint" % self.model_name)
+        self.test_losses_file = os.path.join(self.train_dir, "%s-tracked-losses-checkpoint" % self.model_name)
 
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
         self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
@@ -225,6 +231,7 @@ class GenericModel(object):
 
 
     def fill_feed_dict_with_all_but_one_ex(self, data_set, idx_to_remove):
+
         self.warn_about_fill_feed_dict()
         idx = np.array([True] * data_set.num_examples, dtype=bool)
         idx[idx_to_remove] = False
@@ -235,14 +242,14 @@ class GenericModel(object):
         return feed_dict
 
 
-    def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size=0, verbose=False):
+    def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size):
         self.warn_about_fill_feed_dict()
         if batch_size is None:
             return self.fill_feed_dict_with_all_ex(data_set)
         elif batch_size == 0:
             batch_size = self.batch_size
     
-        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng, verbose=verbose)
+        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng)
 
         feed_dict = {
             self.input_placeholder: input_feed,
@@ -351,7 +358,7 @@ class GenericModel(object):
 
 
 
-    def warm_retrain(self, start_step, end_step, feed_dict=None, idx=None):        
+    def warm_retrain(self, start_step, end_step, feed_dict, idx):        
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
             self.sess.run(self.train_op, feed_dict=feed_dict)
@@ -376,9 +383,7 @@ class GenericModel(object):
             feed_dict={self.learning_rate_placeholder: multiplier * self.initial_learning_rate})        
 
 
-    def train(self, num_steps, 
-              iter_to_switch_to_batch=20000, 
-              iter_to_switch_to_sgd=40000,
+    def train(self, num_steps, iter_to_switch_to_batch, iter_to_switch_to_sgd,
               save_checkpoints=True, verbose=True, track_losses=True):
         """
         Trains a model for a specified number of steps.
@@ -395,7 +400,7 @@ class GenericModel(object):
             start_time = time.time()
 
             if step < iter_to_switch_to_batch:
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", verbose=printing)
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", batch_size=0)
                 _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
                 
             elif step < iter_to_switch_to_sgd:
@@ -448,7 +453,7 @@ class GenericModel(object):
         return self.test_losses, self.test_losses_fine
 
 
-    def load_checkpoint(self, iter_to_load, do_checks=True):
+    def load_checkpoint(self, iter_to_load, do_checks):
         checkpoint_to_load = "%s-%s" % (self.checkpoint_file, iter_to_load) 
         self.saver.restore(self.sess, checkpoint_to_load)
         if os.path.exists(self.rngs_file+".npz"):
@@ -491,7 +496,7 @@ class GenericModel(object):
         return train_op
 
 
-    def get_train_sgd_op(self, total_loss, global_step, learning_rate=0.001):
+    def get_train_sgd_op(self, total_loss, global_step, learning_rate):
         """
         Return train_sgd_op
         """
@@ -564,7 +569,8 @@ class GenericModel(object):
                               scale=10, damping=0.0, num_samples=1, recursion_depth=10000):
         """
         This uses mini-batching; uncomment code for the single sample case.
-        """    
+        """
+
         inverse_hvp = None
         print_iter = recursion_depth / 10
 
@@ -655,7 +661,7 @@ class GenericModel(object):
         return np.concatenate(hessian_vector_val)
 
 
-    def get_cg_callback(self, v, verbose):
+    def get_cg_callback(self, v, verbose=True):
         fmin_loss_fn = self.get_fmin_loss_fn(v)
         
         def fmin_loss_split(x):
@@ -681,7 +687,7 @@ class GenericModel(object):
         return cg_callback
 
 
-    def get_inverse_hvp_cg(self, v, verbose):
+    def get_inverse_hvp_cg(self, v, verbose=True, avextol=1e-8, maxiter=100):
         fmin_loss_fn = self.get_fmin_loss_fn(v)
         fmin_grad_fn = self.get_fmin_grad_fn(v)
         cg_callback = self.get_cg_callback(v, verbose)
@@ -692,13 +698,13 @@ class GenericModel(object):
             fprime=fmin_grad_fn,
             fhess_p=self.get_fmin_hvp,
             callback=cg_callback,
-            avextol=1e-8,
-            maxiter=100) 
+            avextol=avextol,
+            maxiter=maxiter) 
 
         return self.vec_to_list(fmin_results)
 
 
-    def get_test_grad_loss_no_reg_val(self, test_indices, batch_size=100, loss_type='normal_loss'):
+    def get_test_grad_loss_no_reg_val(self, test_indices, batch_size, loss_type='normal_loss'):
 
         if loss_type == 'normal_loss':
             op = self.grad_loss_no_reg_op
@@ -732,8 +738,8 @@ class GenericModel(object):
         return test_grad_loss_no_reg_val
 
 
-    def get_influence_on_test_loss(self, test_indices, train_idx, 
-        approx_type='cg', approx_params=None, force_refresh=True, test_description=None,
+    def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size=100,
+        approx_type='cg', approx_params=None, test_description=None,
         loss_type='normal_loss',
         X=None, Y=None):
         # If train_idx is None then use X and Y (phantom points)
@@ -746,7 +752,7 @@ class GenericModel(object):
         else:
             if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
-        test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, loss_type=loss_type)
+        test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
 
         print('Norm of test gradient: %s' % np.linalg.norm(np.concatenate(test_grad_loss_no_reg_val)))
 
@@ -763,7 +769,8 @@ class GenericModel(object):
             inverse_hvp = self.get_inverse_hvp(
                 test_grad_loss_no_reg_val,
                 approx_type,
-                approx_params)
+                approx_params,
+                verbose=True)
             np.savez(approx_filename, inverse_hvp=inverse_hvp)
             print('Saved inverse HVP to %s' % approx_filename)
 
@@ -796,7 +803,7 @@ class GenericModel(object):
 
 
 
-    def find_eigvals_of_hessian(self, num_iter=100, num_prints=10):
+    def find_eigvals_of_hessian(self, num_iter, num_prints=10):
 
         # Setup        
         print_iterations = num_iter / num_prints

@@ -43,7 +43,9 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         self.hidden1_units = hidden1_units
         self.hidden2_units = hidden2_units
 
-        super(All_CNN_C_Hidden2, self).__init__(seed=seed, **kwargs)
+        super(All_CNN_C_Hidden2, self).__init__(seed=seed,
+                initialization_seed=kwargs.pop('initialization_seed'),
+                batching_seed=kwargs.pop('batching_seed'), test_point=kwargs.pop('test_point'), **kwargs)
 
 
     def conv2d_softplus(self, input_x, conv_patch_size, input_channels, output_channels, stride):
@@ -72,9 +74,10 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         return all_params        
         
 
-    def warm_retrain(self, start_step, end_step, idx, feed_dict=None):
+    def warm_retrain(self, start_step, end_step, idx, feed_dict):
         omits = np.zeros(self.num_train_examples,dtype=bool)
-        omits[idx] = True
+        if idx is not None:
+            omits[idx] = True
         self.data_sets.train.set_omits(omits)
 
         #print(self.data_sets.train._clone_rng.get_state())
@@ -89,7 +92,7 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
-            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone")
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0)
             #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
             if step % 20000 == 0:

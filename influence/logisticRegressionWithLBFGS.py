@@ -135,7 +135,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         #     iter_to_switch_to_sgd=1000000,
         #     save_checkpoints=False, verbose=False)
 
-    def warm_retrain(self, start_step, end_step, feed_dict, idx=None):
+    def warm_retrain(self, start_step, end_step, feed_dict, idx):
 
         self.train_with_LBFGS(
                 feed_dict=feed_dict,
@@ -145,7 +145,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
     def train(self, num_steps=None, 
               iter_to_switch_to_batch=None, 
               iter_to_switch_to_sgd=None,
-              save_checkpoints=True, verbose=True):
+              save_checkpoints=True, verbose=True, track_losses=True):
 
         self.train_with_LBFGS(
             feed_dict=self.all_train_feed_dict,
