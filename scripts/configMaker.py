@@ -1,0 +1,84 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import numpy as np
+import tensorflow as tf
+import os
+import cPickle as pickle
+
+from load_mnist import load_mnist, load_small_mnist
+
+test_idx = 6558
+seed = 0
+model = 'all_cnn_c_hidden'
+dataset_type = 'mnist_small'
+
+assert dataset_type in ['mnist', 'mnist_small']
+assert model in ['all_cnn_c_hidden', 'logreg_lbfgs']
+
+if model == 'all_cnn_c_hidden':
+    hidden_units = [8,8]
+    weight_decay = 0.001
+    damping = 2e-2
+    decay_epochs = [5000,10000]
+    batch_size = 500
+    initial_learning_rate = 0.0001
+    num_steps = 300000
+    model_name = '{}_{}{}_seed{}_iter-{}'.format(dataset_type, model, len(hidden_units), seed, num_steps)
+elif model == 'logreg_lbfgs':
+    weight_decay = 0.01
+    damping = 0.0
+    decay_epochs = [1000,10000]
+    batch_size = 1400
+    initial_learning_rate = 0.001
+    model_name = '{}_{}_seed{}'.format(dataset_type, model, seed)
+
+if dataset_type == 'mnist':
+    data_sets = load_mnist('data')
+elif dataset_type == 'mnist_small':
+    data_sets = load_small_mnist('data')
+
+#genericNN
+gen_dict = {
+        'model_name':           model_name,
+        'test_point':           test_idx,
+        'batching_seed':        seed,
+        'initialization_seed':  seed,
+        'data_sets':            data_sets,
+        'batch_size':           batch_size,
+        'initial_learning_rate':initial_learning_rate,
+        'decay_epochs':         decay_epochs,
+        'damping':              damping,
+        'keep_probs':           None,
+        'mini_batch':           True,
+        'train_dir':            '../scr/unitTest-output',
+        'log_dir':              'log',
+        'num_classes':          10,
+        'lissa_params':         {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion':10000},
+        'fmin_ncg_params':      {'avextol':1e-8,'maxiter':100},
+        'test_grad_batch_size': 100
+        }
+
+#model-specific
+if model == 'all_cnn_c_hidden':
+    spec_dict = {
+            'input_side':       28,
+            'input_channels':   1,
+            'conv_patch_size':  3,
+            'hidden_units':     hidden_units,
+            'weight_decay':     weight_decay
+            }
+elif model == 'logreg_lbfgs':
+    spec_dict = {
+            'input_dim':        data_sets.train.x.shape[1],
+            'weight_decay':     weight_decay,
+            'max_lbfgs_iter':   100
+            }
+
+config_dict = {'gen': gen_dict, 'spec': spec_dict}
+
+pickle_out = open('configs/config_dict_{}.pickle'.format(model_name), 'wb')
+pickle.dump(config_dict, pickle_out)
+pickle_out.close()
