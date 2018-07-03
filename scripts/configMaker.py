@@ -3,12 +3,8 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import numpy as np
-import tensorflow as tf
-import os
+import os, warnings
 import cPickle as pickle
-
-from load_mnist import load_mnist, load_small_mnist
 
 test_idx = 6558
 seed = 0
@@ -35,10 +31,10 @@ elif model == 'logreg_lbfgs':
     initial_learning_rate = 0.001
     model_name = '{}_{}_seed{}'.format(dataset_type, model, seed)
 
-if dataset_type == 'mnist':
-    data_sets = load_mnist('data')
-elif dataset_type == 'mnist_small':
-    data_sets = load_small_mnist('data')
+#if dataset_type == 'mnist':
+#    data_sets = load_mnist('data')
+#elif dataset_type == 'mnist_small':
+#    data_sets = load_small_mnist('data')
 
 #genericNN
 gen_dict = {
@@ -46,7 +42,7 @@ gen_dict = {
         'test_point':           test_idx,
         'batching_seed':        seed,
         'initialization_seed':  seed,
-        'data_sets':            data_sets,
+        'dataset_type':         dataset_type,
         'batch_size':           batch_size,
         'initial_learning_rate':initial_learning_rate,
         'decay_epochs':         decay_epochs,
@@ -76,6 +72,8 @@ elif model == 'logreg_lbfgs':
             'weight_decay':     weight_decay,
             'max_lbfgs_iter':   100
             }
+else:
+    warnings.warn("Invalid model type")
 
 config_dict = {'gen': gen_dict, 'spec': spec_dict}
 

@@ -27,6 +27,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 
 from influence.hessians import hessian_vector_product
 from influence.dataset import DataSet
+from load_mnist import load_mnist, load_small_mnist
 
 
 def variable(name, shape, initializer):
@@ -88,7 +89,14 @@ class GenericNeuralNet(object):
         self._initialization_seed = gen_dict['initialization_seed']
 
         self.batch_size = gen_dict['batch_size']
-        self.data_sets = gen_dict['data_sets']
+        self.dataset_type = gen_dict['dataset_type']
+        if dataset_type == 'mnist':
+            self.data_sets = load_mnist('data')
+        elif dataset_type == 'mnist_small':
+            self.data_sets = load_small_mnist('data')
+        else:
+            warnings.warn('Invalid dataset')
+
         self.train_dir = gen_dict['train_dir']
         self.log_dir = gen_dict['log_dir'] #unused
         self.model_name = gen_dict['model_name']
