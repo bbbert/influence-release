@@ -65,6 +65,7 @@ def viz_top_influential_examples(model, test_idx):
     predicted_loss_diffs = model.get_influence_on_test_loss(
         test_idx, 
         indices_to_remove,
+        batch_size='default',
         force_refresh=True)
 
     # If the predicted difference in loss is high (very positive) after removal,
@@ -102,18 +103,21 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh,
         predicted_loss_diffs = model.get_influence_on_test_loss(
             [test_idx], 
             indices_to_remove,
+            batch_size='default',
             force_refresh=force_refresh)
     elif remove_type == 'random':
         indices_to_remove = np.random.choice(model.num_train_examples, size=num_to_remove, replace=False)
         predicted_loss_diffs = model.get_influence_on_test_loss(
             [test_idx], 
             indices_to_remove,
+            batch_size='default',
             force_refresh=force_refresh)
     ## Or, remove the most influential training examples
     elif remove_type == 'maxinf':    
         predicted_loss_diffs = model.get_influence_on_test_loss(
             [test_idx], 
             np.arange(len(model.data_sets.train.labels)),
+            batch_size='default',
             force_refresh=force_refresh)
         np.savez(
             '../scr/output/{}_predicted_loss_diffs-test-{}'.format(model.model_name, [test_idx]),

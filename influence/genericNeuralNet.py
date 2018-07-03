@@ -192,7 +192,12 @@ class GenericNeuralNet(object):
         self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
         if self.adversarial_loss is not None:
             self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
-        
+
+
+        # Default params for certain functions
+        self.lissa_params = {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion':10000}
+        self.fmin_ncg_params = {'avextol':1e-8,'maxiter':100}
+        self.test_grad_batch_size = 100
 
     def get_vec_to_list_fn(self):
         params_val = self.sess.run(self.params)
@@ -559,14 +564,14 @@ class GenericNeuralNet(object):
     def get_inverse_hvp(self, v, approx_type='cg', approx_params=None, verbose=True):
         assert approx_type in ['cg', 'lissa']
         if approx_type == 'lissa':
+            if approx_params is None:
+                approx_params = self.lissa_params
             return self.get_inverse_hvp_lissa(v, **approx_params)
         elif approx_type == 'cg':
-            return self.get_inverse_hvp_cg(v, verbose)
+            return self.get_inverse_hvp_cg(v, verbose=verbose, **self.fmin_ncg_params)
 
 
-    def get_inverse_hvp_lissa(self, v, 
-                              batch_size=None,
-                              scale=10, damping=0.0, num_samples=1, recursion_depth=10000):
+    def get_inverse_hvp_lissa(self, v, batch_size, scale, damping, num_samples, recursion_depth):
         """
         This uses mini-batching; uncomment code for the single sample case.
         """
@@ -687,7 +692,7 @@ class GenericNeuralNet(object):
         return cg_callback
 
 
-    def get_inverse_hvp_cg(self, v, verbose=True, avextol=1e-8, maxiter=100):
+    def get_inverse_hvp_cg(self, v, avextol, maxiter, verbose=True):
         fmin_loss_fn = self.get_fmin_loss_fn(v)
         fmin_grad_fn = self.get_fmin_grad_fn(v)
         cg_callback = self.get_cg_callback(v, verbose)
@@ -738,10 +743,14 @@ class GenericNeuralNet(object):
         return test_grad_loss_no_reg_val
 
 
-    def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size=100,
+    def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size,
         approx_type='cg', approx_params=None, test_description=None,
         loss_type='normal_loss',
         X=None, Y=None):
+        
+        if batch_size == 'default':
+            batch_size = self.test_grad_batch_size
+
         # If train_idx is None then use X and Y (phantom points)
         # Need to make sure test_idx stays consistent between models
         # because mini-batching permutes dataset order

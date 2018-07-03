@@ -59,3 +59,22 @@ actual_loss_diffs, predicted_loss_diffs_cg, indices_to_remove = experiments.test
     remove_type='maxinf',
     random_seed=0)
 
+"""
+# LiSSA
+np.random.seed(17)
+predicted_loss_diffs_lissa = tf_model.get_influence_on_test_loss(
+            [test_idx], 
+                indices_to_remove,
+                    approx_type='lissa',
+                        approx_params={'scale':25, 'recursion_depth':5000, 'damping':0, 'batch_size':1, 'num_samples':10},
+                            force_refresh=True
+                            )
+
+np.savez(
+            'output/mnist_logreg_lbfgs_retraining-500.npz', 
+                actual_loss_diffs=actual_loss_diffs, 
+                    predicted_loss_diffs_cg=predicted_loss_diffs_cg,
+                        predicted_loss_diffs_lissa=predicted_loss_diffs_lissa,
+                            indices_to_remove=indices_to_remove
+                                )
+"""
