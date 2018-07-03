@@ -26,12 +26,15 @@ from influence.genericNeuralNet import GenericNeuralNet, variable, variable_with
 
 class LogisticRegressionWithLBFGS(GenericNeuralNet):
 
-    def __init__(self, input_dim, weight_decay, max_lbfgs_iter, **kwargs):
-        self.weight_decay = weight_decay
-        self.input_dim = input_dim
-        self.max_lbfgs_iter = max_lbfgs_iter
+    def __init__(self, config_dict):
 
-        super(LogisticRegressionWithLBFGS, self).__init__(**kwargs)
+        spec_dict = config_dict['spec']
+
+        self.weight_decay = spec_dict['weight_decay']
+        self.input_dim = spec_dict['input_dim']
+        self.max_lbfgs_iter = spec_dict['max_lbfgs_iter']
+
+        super(LogisticRegressionWithLBFGS, self).__init__(config_dict)
 
         self.set_params_op = self.set_params()
         # self.hessians_op = hessians(self.total_loss, self.params)        

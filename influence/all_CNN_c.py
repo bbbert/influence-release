@@ -32,20 +32,21 @@ def softplus(x):
     return tf.log(tf.exp(x) + 1)
 
 
-class All_CNN_C_Hidden2(GenericNeuralNet):
+class All_CNN_C(GenericNeuralNet):
 
-    def __init__(self, input_side, input_channels, conv_patch_size, hidden1_units, hidden2_units, weight_decay, seed=0, **kwargs):
-        self.weight_decay = weight_decay
-        self.input_side = input_side
-        self.input_channels = input_channels
+    def __init__(self, config_dict):
+        spec_dict = config_dict['spec']
+
+        self.weight_decay = spec_dict['weight_decay']
+        self.input_side = spec_dict['input_side']
+        self.input_channels = spec_dict['input_channels']
+        self.conv_patch_size = spec_dict['conv_patch_size']
+        self.hidden_units = spec_dict['hidden_units']
+
+        self.num_hidden = len(hidden_units)
         self.input_dim = self.input_side * self.input_side * self.input_channels
-        self.conv_patch_size = conv_patch_size
-        self.hidden1_units = hidden1_units
-        self.hidden2_units = hidden2_units
 
-        super(All_CNN_C_Hidden2, self).__init__(seed=seed,
-                initialization_seed=kwargs.pop('initialization_seed'),
-                batching_seed=kwargs.pop('batching_seed'), test_point=kwargs.pop('test_point'), **kwargs)
+        super(All_CNN_C, self).__init__(config_dict)
 
 
     def conv2d_softplus(self, input_x, conv_patch_size, input_channels, output_channels, stride):
@@ -54,6 +55,10 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
             [conv_patch_size * conv_patch_size * input_channels * output_channels],
             stddev=2.0 / math.sqrt(float(conv_patch_size * conv_patch_size * input_channels)),
             wd=self.weight_decay)
+        if num_hidden == 0:
+            hidden = tf.nn.tanh(conv2d(input_x, weights_reshaped, stride))
+            return hidden
+
         biases = variable(
             'biases',
             [output_channels],
@@ -67,10 +72,12 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
 
     def get_all_params(self):
         all_params = []
-        for layer in ['h1_a', 'h1_c', 'h2_a', 'h2_c', 'softmax_linear']:        
-            for var_name in ['weights', 'biases']:
-                temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
-                all_params.append(temp_tensor)      
+        for layer in ['h{}_a'.format(i+1) for i in range(num_hidden)] + ['h{}_c'.format(i+1) for i in range(num_hidden)] + ['softmax_linear']:
+            if (num_hidden == 0): names = ['weights']
+            else: names = ['weights', 'biases']
+            for var_name in names:
+               temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))
+               all_params.append(temp_tensor)      
         return all_params        
         
 
@@ -79,17 +86,11 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         if idx is not None:
             omits[idx] = True
         self.data_sets.train.set_omits(omits)
-
-        #print(self.data_sets.train._clone_rng.get_state())
-
         self.data_sets.train.reset_clone()
-
-        #print(self.data_sets.train._clone_rng.get_state())
 
         start_time = time.time()
 
         retrain_losses = []
-        
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
             iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0)
@@ -121,26 +122,39 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
         return input_placeholder, labels_placeholder
 
 
-    def inference(self, input_x):        
+    def inference(self, input_x):
+
+        if num_hidden == 0:
+            last_layer_units = self.input_dim
+
+            with tf.variable_scope('softmax_linear'):
+                weights = variable_with_weight_decay(
+                        'weights',
+                        [last_layer_units * self.num_classes],
+                        stddev=1.0/math.sqrt(float(last_layer_units)),
+                        wd=self.weight_decay)
+                logits = tf.matmul(input_x, tf.reshape(weights, [last_layer_units, self.num_classes]))
+            return logits
 
         input_reshaped = tf.reshape(input_x, [-1, self.input_side, self.input_side, self.input_channels])
-        
-        # Hidden 1
+
+        h_a = []
+        h_c = []
+
         with tf.variable_scope('h1_a'):
-            h1_a = self.conv2d_softplus(input_reshaped, self.conv_patch_size, self.input_channels, self.hidden1_units, stride=1)
+            h_a.append(self.conv2d_softplus(input_reshaped, self.conv_patch_size, self.input_channels, self.hidden_units[0], stride=1))
 
-        with tf.variable_scope('h1_c'):
-            h1_c = self.conv2d_softplus(h1_a, self.conv_patch_size, self.hidden1_units, self.hidden1_units, stride=2)
+        for i in range(num_hidden-1):
+            with tf.variable_scope('h{}_c'.format(i+1)):
+                h_c.append(self.conv2d_softplus(h_a[-1], self.conv_patch_size, self.hidden_units[i], self.hidden_units[i], stride=2))
+            with tf.variable_scope('h{}_a'.format(i+2)):
+                h_a.append(self.conv2d_softplus(h_c[-1], self.conv_patch_size, self.hidden_units[i], self.hidden_units[i+1], stride=1))
 
-        # Hidden 2
-        with tf.variable_scope('h2_a'):
-            h2_a = self.conv2d_softplus(h1_c, self.conv_patch_size, self.hidden1_units, self.hidden2_units, stride=1)
+        last_layer_units = self.num_classes
+        with tf.variable_scope('h{}_c'.format(self.num_hidden)):
+            h_c.append(self.conv2d_softplus(h_a[-1], 1, self.hidden_units[-1], last_layer_units, stride=1))
         
-        last_layer_units = 10
-        with tf.variable_scope('h2_c'):
-            h2_c = self.conv2d_softplus(h2_a, 1, self.hidden2_units, last_layer_units, stride=1)
-        
-        h2_d = tf.reduce_mean(h2_c, axis=[1, 2])
+        h_d = tf.reduce_mean(h_c[-1], axis=[1, 2])
         
         with tf.variable_scope('softmax_linear'):
 
@@ -154,7 +168,7 @@ class All_CNN_C_Hidden2(GenericNeuralNet):
                 [self.num_classes],
                 tf.constant_initializer(0.0))
 
-            logits = tf.matmul(h2_d, tf.reshape(weights, [last_layer_units, self.num_classes])) + biases
+            logits = tf.matmul(h_d, tf.reshape(weights, [last_layer_units, self.num_classes])) + biases
             
         return logits
 

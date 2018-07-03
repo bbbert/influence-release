@@ -90,12 +90,17 @@ class GenericNeuralNet(object):
 
         self.batch_size = gen_dict['batch_size']
         self.dataset_type = gen_dict['dataset_type']
-        if dataset_type == 'mnist':
+        if self.dataset_type == 'mnist':
             self.data_sets = load_mnist('data')
-        elif dataset_type == 'mnist_small':
+        elif self.dataset_type == 'mnist_small':
             self.data_sets = load_small_mnist('data')
         else:
             warnings.warn('Invalid dataset')
+
+        for dataset in data_sets:
+            if dataset is not None:
+                dataset.set_randomState_and_reset_rngs(intialization_seed)
+        data_sets.train.reset_omits()
 
         self.train_dir = gen_dict['train_dir']
         self.log_dir = gen_dict['log_dir'] #unused

@@ -8,7 +8,8 @@ import cPickle as pickle
 
 test_idx = 6558
 seed = 0
-model = 'all_cnn_c_hidden'
+model = 'logreg_lbfgs'
+#model = 'all_cnn_c_hidden'
 dataset_type = 'mnist_small'
 
 assert dataset_type in ['mnist', 'mnist_small']
@@ -68,7 +69,7 @@ if model == 'all_cnn_c_hidden':
             }
 elif model == 'logreg_lbfgs':
     spec_dict = {
-            'input_dim':        data_sets.train.x.shape[1],
+            'input_dim':        28*28,
             'weight_decay':     weight_decay,
             'max_lbfgs_iter':   100
             }
