@@ -50,10 +50,10 @@ gen_dict = {
         'damping':              damping,
         'keep_probs':           None,
         'mini_batch':           True,
-        'train_dir':            '../scr/unitTest-output',
+        'train_dir':            '../unitTest-output',
         'log_dir':              'log',
         'num_classes':          10,
-        'lissa_params':         {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion':10000},
+        'lissa_params':         {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion_depth':5000},
         'fmin_ncg_params':      {'avextol':1e-8,'maxiter':100},
         'test_grad_batch_size': 100
         }

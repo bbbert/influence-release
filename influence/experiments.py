@@ -120,7 +120,7 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh,
             batch_size='default',
             force_refresh=force_refresh)
         np.savez(
-            '../scr/output/{}_predicted_loss_diffs-test-{}'.format(model.model_name, [test_idx]),
+            '../output/{}_predicted_loss_diffs-test-{}'.format(model.model_name, [test_idx]),
             predicted_loss_diffs=predicted_loss_diffs)
         indices_to_remove = np.argsort(np.abs(predicted_loss_diffs))[-num_to_remove:]
         predicted_loss_diffs = predicted_loss_diffs[indices_to_remove]
@@ -177,7 +177,7 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh,
         
 
     np.savez(
-        '../scr/output/{}_{}_loss_diffs'.format(model.model_name,remove_type), 
+        '../output/{}_{}_loss_diffs'.format(model.model_name,remove_type), 
         actual_loss_diffs=actual_loss_diffs, 
         predicted_loss_diffs=predicted_loss_diffs)
 
@@ -216,6 +216,6 @@ def test_only_retraining(model, test_idx, iter_to_load, force_refresh,
         model.load_checkpoint(iter_to_load, do_checks=False)
 
     np.savez(
-        '../scr/output/{}_{}_warm_start_loss_diffs'.format(model.model_name,remove_type), 
+        '../output/{}_{}_warm_start_loss_diffs'.format(model.model_name,remove_type), 
         actual_loss_diffs=actual_loss_diffs)
     return actual_loss_diffs

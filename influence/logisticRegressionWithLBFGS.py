@@ -48,7 +48,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             solver='lbfgs',
             multi_class='multinomial',
             warm_start=True, #True
-            max_iter=max_lbfgs_iter)
+            max_iter=self.max_lbfgs_iter)
 
         C_minus_one = 1.0 / ((self.num_train_examples - 1) * self.weight_decay)
         self.sklearn_model_minus_one = linear_model.LogisticRegression(
@@ -58,7 +58,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             solver='lbfgs',
             multi_class='multinomial',
             warm_start=True, #True
-            max_iter=max_lbfgs_iter)        
+            max_iter=self.max_lbfgs_iter)        
 
 
     def get_all_params(self):

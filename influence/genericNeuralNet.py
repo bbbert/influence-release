@@ -97,10 +97,10 @@ class GenericNeuralNet(object):
         else:
             warnings.warn('Invalid dataset')
 
-        for dataset in data_sets:
+        for dataset in self.data_sets:
             if dataset is not None:
-                dataset.set_randomState_and_reset_rngs(intialization_seed)
-        data_sets.train.reset_omits()
+                dataset.set_randomState_and_reset_rngs(self._batching_seed)
+        self.data_sets.train.reset_omits()
 
         self.train_dir = gen_dict['train_dir']
         self.log_dir = gen_dict['log_dir'] #unused
@@ -129,7 +129,7 @@ class GenericNeuralNet(object):
         #if 'damping' in kwargs: self.damping = kwargs.pop('damping')
         #else: self.damping = 0.0
          
-        np.random.seed(_batching_seed)
+        np.random.seed(self._batching_seed)
         
         # This sets the global tf random seed. There are also operation-level random
         # seeds, which we can sort of ignore if we set the global seed. However,
@@ -139,7 +139,7 @@ class GenericNeuralNet(object):
         # for variable initialization--just remember to always initialize in the same
         # order! And if tf randomness plays a role in later features, we may want to
         # control the op-level seeds.
-        tf.set_random_seed(_initialization_seed)
+        tf.set_random_seed(self._initialization_seed)
        
         if not os.path.exists(self.train_dir):
             os.makedirs(self.train_dir)

@@ -103,7 +103,7 @@ class All_CNN_C(GenericNeuralNet):
                 feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
                 retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
         
-        np.savez('../scr/output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
+        np.savez('../output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
         print(retrain_losses[((end_step-start_step)//1000)-1])
 
         self.data_sets.train.reset_omits()

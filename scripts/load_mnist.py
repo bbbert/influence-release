@@ -142,7 +142,7 @@ def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
   # test_images = test_images[perm, :]
   # test_labels = test_labels[perm]
 
-  savename = '../scr/output/mnist_small_save.npz'
+  savename = '../output/mnist_small_save.npz'
   if not os.path.exists(savename):
     np.savez(savename,
           train_images=train_images,
