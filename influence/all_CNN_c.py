@@ -20,6 +20,7 @@ import time
 import IPython
 import tensorflow as tf
 import math
+import copy
 
 from influence.genericNeuralNet import GenericNeuralNet, variable, variable_with_weight_decay
 from influence.dataset import DataSet
@@ -31,9 +32,9 @@ def softplus(x):
     return tf.log(tf.exp(x) + 1)
 
 
-class All_CNN_C(GenericNeuralNet):
+class All_CNN_C_Hidden2(GenericNeuralNet):
 
-    def __init__(self, input_side, input_channels, conv_patch_size, hidden1_units, hidden2_units, hidden3_units, weight_decay, **kwargs):
+    def __init__(self, input_side, input_channels, conv_patch_size, hidden1_units, hidden2_units, weight_decay, seed=0, **kwargs):
         self.weight_decay = weight_decay
         self.input_side = input_side
         self.input_channels = input_channels
@@ -41,9 +42,10 @@ class All_CNN_C(GenericNeuralNet):
         self.conv_patch_size = conv_patch_size
         self.hidden1_units = hidden1_units
         self.hidden2_units = hidden2_units
-        self.hidden3_units = hidden3_units
 
-        super(All_CNN_C, self).__init__(**kwargs)
+        super(All_CNN_C_Hidden2, self).__init__(seed=seed,
+                initialization_seed=kwargs.pop('initialization_seed'),
+                batching_seed=kwargs.pop('batching_seed'), test_point=kwargs.pop('test_point'), **kwargs)
 
 
     def conv2d_softplus(self, input_x, conv_patch_size, input_channels, output_channels, stride):
@@ -65,20 +67,46 @@ class All_CNN_C(GenericNeuralNet):
 
     def get_all_params(self):
         all_params = []
-        for layer in ['h1_a', 'h1_c', 'h2_a', 'h2_c', 'h3_a', 'h3_c', 'softmax_linear']:        
+        for layer in ['h1_a', 'h1_c', 'h2_a', 'h2_c', 'softmax_linear']:        
             for var_name in ['weights', 'biases']:
                 temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
                 all_params.append(temp_tensor)      
         return all_params        
         
 
-    def retrain(self, num_steps, feed_dict):        
+    def warm_retrain(self, start_step, end_step, idx, feed_dict):
+        omits = np.zeros(self.num_train_examples,dtype=bool)
+        if idx is not None:
+            omits[idx] = True
+        self.data_sets.train.set_omits(omits)
 
-        retrain_dataset = DataSet(feed_dict[self.input_placeholder], feed_dict[self.labels_placeholder])
+        #print(self.data_sets.train._clone_rng.get_state())
 
-        for step in xrange(num_steps):   
-            iter_feed_dict = self.fill_feed_dict_with_batch(retrain_dataset)
+        self.data_sets.train.reset_clone()
+
+        #print(self.data_sets.train._clone_rng.get_state())
+
+        start_time = time.time()
+
+        retrain_losses = []
+        
+        for step in xrange(start_step,end_step):
+            self.update_learning_rate(step)
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0)
+            #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
+            if step % 20000 == 0:
+                print('Step {} took {} sec'.format(step,time.time() - start_time))
+                start_time = time.time()
+            if step % 1000 == 0:
+                feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
+                retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
+        
+        np.savez('../scr/output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
+        print(retrain_losses[((end_step-start_step)//1000)-1])
+
+        self.data_sets.train.reset_omits()
+
 
 
     def placeholder_inputs(self):
@@ -100,26 +128,19 @@ class All_CNN_C(GenericNeuralNet):
         # Hidden 1
         with tf.variable_scope('h1_a'):
             h1_a = self.conv2d_softplus(input_reshaped, self.conv_patch_size, self.input_channels, self.hidden1_units, stride=1)
-            
+
         with tf.variable_scope('h1_c'):
             h1_c = self.conv2d_softplus(h1_a, self.conv_patch_size, self.hidden1_units, self.hidden1_units, stride=2)
-            
+
         # Hidden 2
         with tf.variable_scope('h2_a'):
             h2_a = self.conv2d_softplus(h1_c, self.conv_patch_size, self.hidden1_units, self.hidden2_units, stride=1)
-            
-        with tf.variable_scope('h2_c'):
-            h2_c = self.conv2d_softplus(h2_a, self.conv_patch_size, self.hidden2_units, self.hidden2_units, stride=2)
-            
-        # Shared layers / hidden 3
-        with tf.variable_scope('h3_a'):
-            h3_a = self.conv2d_softplus(h2_c, self.conv_patch_size, self.hidden2_units, self.hidden3_units, stride=1)        
         
         last_layer_units = 10
-        with tf.variable_scope('h3_c'):
-            h3_c = self.conv2d_softplus(h3_a, 1, self.hidden3_units, last_layer_units, stride=1)
+        with tf.variable_scope('h2_c'):
+            h2_c = self.conv2d_softplus(h2_a, 1, self.hidden2_units, last_layer_units, stride=1)
         
-        h3_d = tf.reduce_mean(h3_c, axis=[1, 2])
+        h2_d = tf.reduce_mean(h2_c, axis=[1, 2])
         
         with tf.variable_scope('softmax_linear'):
 
@@ -133,7 +154,7 @@ class All_CNN_C(GenericNeuralNet):
                 [self.num_classes],
                 tf.constant_initializer(0.0))
 
-            logits = tf.matmul(h3_d, tf.reshape(weights, [last_layer_units, self.num_classes])) + biases
+            logits = tf.matmul(h2_d, tf.reshape(weights, [last_layer_units, self.num_classes])) + biases
             
         return logits
 
