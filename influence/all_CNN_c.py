@@ -43,7 +43,7 @@ class All_CNN_C(GenericNeuralNet):
         self.conv_patch_size = spec_dict['conv_patch_size']
         self.hidden_units = spec_dict['hidden_units']
 
-        self.num_hidden = len(hidden_units)
+        self.num_hidden = len(self.hidden_units)
         self.input_dim = self.input_side * self.input_side * self.input_channels
 
         super(All_CNN_C, self).__init__(config_dict)
@@ -55,7 +55,7 @@ class All_CNN_C(GenericNeuralNet):
             [conv_patch_size * conv_patch_size * input_channels * output_channels],
             stddev=2.0 / math.sqrt(float(conv_patch_size * conv_patch_size * input_channels)),
             wd=self.weight_decay)
-        if num_hidden == 0:
+        if self.num_hidden == 0:
             hidden = tf.nn.tanh(conv2d(input_x, weights_reshaped, stride))
             return hidden
 
@@ -72,8 +72,8 @@ class All_CNN_C(GenericNeuralNet):
 
     def get_all_params(self):
         all_params = []
-        for layer in ['h{}_a'.format(i+1) for i in range(num_hidden)] + ['h{}_c'.format(i+1) for i in range(num_hidden)] + ['softmax_linear']:
-            if (num_hidden == 0): names = ['weights']
+        for layer in ['h{}_a'.format(i+1) for i in range(self.num_hidden)] + ['h{}_c'.format(i+1) for i in range(self.num_hidden)] + ['softmax_linear']:
+            if (self.num_hidden == 0): names = ['weights']
             else: names = ['weights', 'biases']
             for var_name in names:
                temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))
@@ -93,7 +93,7 @@ class All_CNN_C(GenericNeuralNet):
         retrain_losses = []
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
-            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0)
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0,verbose=(step % 500 == 0)) #######
             #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
             if step % 20000 == 0:
@@ -102,9 +102,11 @@ class All_CNN_C(GenericNeuralNet):
             if step % 1000 == 0:
                 feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
                 retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
+                print('Train loss at step {}: {}'.format(step, self.sess.run(self.total_loss,\
+                        feed_dict=self.fill_feed_dict_with_all_ex(self.data_sets.train)))) #######
         
         np.savez('../output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
-        print(retrain_losses[((end_step-start_step)//1000)-1])
+        print('Last Test Loss: {}'.format(retrain_losses[((end_step-start_step)//1000)-1]))
 
         self.data_sets.train.reset_omits()
 
@@ -124,7 +126,7 @@ class All_CNN_C(GenericNeuralNet):
 
     def inference(self, input_x):
 
-        if num_hidden == 0:
+        if self.num_hidden == 0:
             last_layer_units = self.input_dim
 
             with tf.variable_scope('softmax_linear'):
@@ -144,7 +146,7 @@ class All_CNN_C(GenericNeuralNet):
         with tf.variable_scope('h1_a'):
             h_a.append(self.conv2d_softplus(input_reshaped, self.conv_patch_size, self.input_channels, self.hidden_units[0], stride=1))
 
-        for i in range(num_hidden-1):
+        for i in range(self.num_hidden-1):
             with tf.variable_scope('h{}_c'.format(i+1)):
                 h_c.append(self.conv2d_softplus(h_a[-1], self.conv_patch_size, self.hidden_units[i], self.hidden_units[i], stride=2))
             with tf.variable_scope('h{}_a'.format(i+2)):

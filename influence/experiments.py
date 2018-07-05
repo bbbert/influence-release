@@ -113,12 +113,14 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh,
             batch_size='default',
             force_refresh=force_refresh)
     ## Or, remove the most influential training examples
-    elif remove_type == 'maxinf':    
+    elif remove_type == 'maxinf': 
+
         predicted_loss_diffs = model.get_influence_on_test_loss(
             [test_idx], 
             np.arange(len(model.data_sets.train.labels)),
             batch_size='default',
             force_refresh=force_refresh)
+        
         np.savez(
             '../output/{}_predicted_loss_diffs-test-{}'.format(model.model_name, [test_idx]),
             predicted_loss_diffs=predicted_loss_diffs)
@@ -182,8 +184,8 @@ def test_retraining(model, test_idx, iter_to_load, force_refresh,
         predicted_loss_diffs=predicted_loss_diffs)
 
     print('Correlation is %s' % pearsonr(actual_loss_diffs, predicted_loss_diffs)[0])
-    print(actual_loss_diffs)
-    print(predicted_loss_diffs)
+    print('Actual {}'.format(actual_loss_diffs))
+    print('Predicted {}'.format(predicted_loss_diffs))
     return actual_loss_diffs, predicted_loss_diffs, indices_to_remove
 
 def test_only_retraining(model, test_idx, iter_to_load, force_refresh, 

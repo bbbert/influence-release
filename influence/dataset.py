@@ -8,21 +8,31 @@ class DataSet(object):
     def reset_rng(self):
         print("Reset attempted")
         self._rng.seed(self._randomState)
+        self.reset_indices('normal')
 
     def reset_orig(self):
         self._orig_rng.seed(self._randomState)
+        self.reset_indices('orig')
 
     def reset_clone(self):
         self._clone_rng = copy.deepcopy(self._rng)
+        self.reset_indices('clone')
 
     def reset_rngs(self):
         self.reset_rng()
         self.reset_orig()
         self.reset_clone()
 
-    def reset_indices(self):
-        self._index_in_epoch = 0
-        self._batch_indices = np.arange(self._num_examples)
+    def reset_indices(self, which_rng):
+        rngs = ['normal', 'orig', 'clone']
+        assert which_rng in ['all'] + rngs
+        if which_rng == 'all':
+            for rng in rngs:
+                self._indices_in_epoch[rng] = 0
+                self._batch_indices[rng] = np.arange(self._num_examples)
+        else:
+            self._indices_in_epoch[which_rng] = 0
+            self._batch_indices[which_rng] = np.arange(self._num_examples)
 
     # N.B.: omits is a boolean vector where True = omit, False = keep 
     def __init__(self, x, labels, randomState, omits):
@@ -38,7 +48,9 @@ class DataSet(object):
 
         self._labels = labels
         self._num_examples = x.shape[0]
-        self.reset_indices()        
+        self._indices_in_epoch = {}
+        self._batch_indices = {}
+        self.reset_indices('all')
         self._randomState = randomState
         self._rng = np.random.RandomState(self._randomState)
         self._orig_rng = np.random.RandomState(self._randomState)
@@ -68,7 +80,7 @@ class DataSet(object):
     def set_randomState_and_reset_rngs(self,randomState):
         self._randomState = randomState
         self.reset_rngs()
-        self.reset_indices()
+        self.reset_indices('all')
 
     def reset_omits(self):
         self._omits = np.zeros(self._num_examples, dtype=bool)
@@ -79,16 +91,16 @@ class DataSet(object):
     def reset_batch(self):
         raise DeprecationWarning("You probably don't want to reset all: reset_orig for eval funcs and set_omits for overriding/updating")
         self._index_in_epoch = 0        
-        self.reset_indices()
+        self.reset_indices('all')
         self.reset_rngs()
         self.reset_omits()
 
     def next_batch(self, batch_size, which_rng, verbose=False):
         assert batch_size <= self._num_examples
 
-        start = self._index_in_epoch
-        self._index_in_epoch += batch_size
-        if self._index_in_epoch > self._num_examples:
+        start = self._indices_in_epoch[which_rng]
+        self._indices_in_epoch[which_rng] += batch_size
+        if self._indices_in_epoch[which_rng] > self._num_examples:
 
             # Shuffle the data
             perm = np.arange(self._num_examples)
@@ -101,23 +113,21 @@ class DataSet(object):
             else:
                 raise ValueError("Invalid rng type")
             
-            self._batch_indices = self._batch_indices[perm]
+            self._batch_indices[which_rng] = self._batch_indices[which_rng][perm]
 
             # Start next epoch
             start = 0
-            self._index_in_epoch = batch_size
+            self._indices_in_epoch[which_rng] = batch_size
 
-        end = self._index_in_epoch
+        end = self._indices_in_epoch[which_rng]
 
         # Extract x's and labels from batch_indices
 
-        selected_indices = self._batch_indices[start:end]
+        selected_indices = self._batch_indices[which_rng][start:end]
 
         selected_indices = selected_indices[~self._omits[selected_indices]]
-        #if which_rng=="normal" and verbose: #####
-        #    print(selected_indices[0])
-        #if which_rng == "clone":
-        #    print(selected_indices[0])
+        if verbose:
+            print(selected_indices[0])
         #if len(selected_indices) != batch_size:
         #    print("Omitted something")
 

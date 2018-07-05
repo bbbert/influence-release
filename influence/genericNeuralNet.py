@@ -265,14 +265,14 @@ class GenericNeuralNet(object):
         return feed_dict
 
 
-    def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size):
+    def fill_feed_dict_with_batch(self, data_set, which_rng, batch_size, verbose=False):
         self.warn_about_fill_feed_dict()
         if batch_size is None:
             return self.fill_feed_dict_with_all_ex(data_set)
         elif batch_size == 0:
             batch_size = self.batch_size
     
-        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng)
+        input_feed, labels_feed = data_set.next_batch(batch_size, which_rng, verbose=verbose)
 
         feed_dict = {
             self.input_placeholder: input_feed,
@@ -423,7 +423,7 @@ class GenericNeuralNet(object):
             start_time = time.time()
 
             if step < iter_to_switch_to_batch:
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", batch_size=0)
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", batch_size=0, verbose = (step % 500 == 0)) ###
                 _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
                 
             elif step < iter_to_switch_to_sgd:
@@ -454,20 +454,20 @@ class GenericNeuralNet(object):
                         self.test_losses_fine.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
                     if step % 1000 == 0:
                         self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
-
-
+        
         print(self.test_losses_fine)
         print(self.test_losses)
 
     def save(self, step):
         self.saver.save(self.sess, self.checkpoint_file, global_step=step)
+        # Note: we don't save orig or clone info
         states = [dataset._rng.get_state() for dataset in self.data_sets]
         arrs = [state[1] for state in states]
         poss = [state[2] for state in states]
         gausses = [state[3] for state in states]
         caches = [state[4] for state in states]
         batch_indices = [dataset._batch_indices for dataset in self.data_sets]
-        epoch_indices = [dataset._index_in_epoch for dataset in self.data_sets]
+        epoch_indices = [dataset._indices_in_epoch for dataset in self.data_sets]
         np.savez(self.rngs_file, arrs=arrs,poss=poss,gausses=gausses,caches=caches,
                 batch_indices=batch_indices,epoch_indices=epoch_indices)
         np.savez(self.test_losses_file, test_losses=self.test_losses, test_losses_fine=self.test_losses_fine)
@@ -491,7 +491,7 @@ class GenericNeuralNet(object):
             for i, dataset in enumerate(self.data_sets):
                 dataset._rng.set_state((name, arrs[i], poss[i], gausses[i], caches[i]))
                 dataset._batch_indices = batch_indices[i]
-                dataset._index_in_epoch = epoch_indices[i]
+                dataset._indices_in_epoch = epoch_indices[i]
         else:
             warnings.warn("NOT RELOADING DATASET RANDOM STATES")
 
@@ -722,7 +722,7 @@ class GenericNeuralNet(object):
             fhess_p=self.get_fmin_hvp,
             callback=cg_callback,
             avextol=avextol,
-            maxiter=maxiter) 
+            maxiter=maxiter)
 
         return self.vec_to_list(fmin_results)
 
@@ -798,6 +798,7 @@ class GenericNeuralNet(object):
                 approx_type,
                 approx_params,
                 verbose=True)
+
             np.savez(approx_filename, inverse_hvp=inverse_hvp)
             print('Saved inverse HVP to %s' % approx_filename)
 

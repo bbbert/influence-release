@@ -8,8 +8,8 @@ import cPickle as pickle
 
 test_idx = 6558
 seed = 0
-model = 'logreg_lbfgs'
-#model = 'all_cnn_c_hidden'
+#model = 'logreg_lbfgs'
+model = 'all_cnn_c_hidden'
 dataset_type = 'mnist_small'
 
 assert dataset_type in ['mnist', 'mnist_small']
@@ -22,7 +22,7 @@ if model == 'all_cnn_c_hidden':
     decay_epochs = [5000,10000]
     batch_size = 500
     initial_learning_rate = 0.0001
-    num_steps = 300000
+    num_steps = 10000 #300000
     model_name = '{}_{}{}_seed{}_iter-{}'.format(dataset_type, model, len(hidden_units), seed, num_steps)
 elif model == 'logreg_lbfgs':
     weight_decay = 0.01
