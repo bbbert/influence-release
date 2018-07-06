@@ -394,13 +394,17 @@ class GenericNeuralNet(object):
         epoch = step // num_steps_in_epoch
 
         multiplier = 1
+        for i in self.decay_epochs:
+            if epoch >= i:
+                multiplier = multiplier / 10
+        """
         if epoch < self.decay_epochs[0]:
             multiplier = 1
         elif epoch < self.decay_epochs[1]:
             multiplier = 0.1
         else:
             multiplier = 0.01
-        
+        """
         self.sess.run(
             self.update_learning_rate_op, 
             feed_dict={self.learning_rate_placeholder: multiplier * self.initial_learning_rate})        
@@ -417,13 +421,15 @@ class GenericNeuralNet(object):
 
         self.data_sets.train.reset_rng()
 
+        test_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
+
         for step in xrange(num_steps):
             self.update_learning_rate(step)
 
             start_time = time.time()
 
             if step < iter_to_switch_to_batch:
-                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", batch_size=0, verbose = (step % 500 == 0)) ###
+                feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train, which_rng="normal", batch_size=0, verbose = False)#(step % 500 == 0)) ###
                 _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=feed_dict)
                 
             elif step < iter_to_switch_to_sgd:
@@ -439,7 +445,7 @@ class GenericNeuralNet(object):
             if verbose:
                 if step % 1000 == 0:
                     # Print status to stdout.
-                    print('Step %d: loss = %.8f (%.3f sec)' % (step, loss_val, duration))
+                    print('Step %d: train loss = %.8f, test loss = %.8f (%.3f sec)' % (step, sess.run(self.total_loss, feed_dict=self.all_train_feed_dict), sess.run(self.loss_no_reg,feed_dict=test_feed_dict), duration)) ########
 
             # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
@@ -449,11 +455,10 @@ class GenericNeuralNet(object):
 
             if track_losses:
                 if step < 100 or step % 1000 == 0:
-                    feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
                     if step < 100:
-                        self.test_losses_fine.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+                        self.test_losses_fine.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
                     if step % 1000 == 0:
-                        self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=feed_dict))
+                        self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
         
         print(self.test_losses_fine)
         print(self.test_losses)

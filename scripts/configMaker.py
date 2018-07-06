@@ -22,7 +22,7 @@ if model == 'all_cnn_c_hidden':
     decay_epochs = [5000,10000]
     batch_size = 500
     initial_learning_rate = 0.0001
-    num_steps = 10000 #300000
+    num_steps = 300000
     model_name = '{}_{}{}_seed{}_iter-{}'.format(dataset_type, model, len(hidden_units), seed, num_steps)
 elif model == 'logreg_lbfgs':
     weight_decay = 0.01
@@ -31,11 +31,6 @@ elif model == 'logreg_lbfgs':
     batch_size = 1400
     initial_learning_rate = 0.001
     model_name = '{}_{}_seed{}'.format(dataset_type, model, seed)
-
-#if dataset_type == 'mnist':
-#    data_sets = load_mnist('data')
-#elif dataset_type == 'mnist_small':
-#    data_sets = load_small_mnist('data')
 
 #genericNN
 gen_dict = {

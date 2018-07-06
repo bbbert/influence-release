@@ -93,7 +93,7 @@ class All_CNN_C(GenericNeuralNet):
         retrain_losses = []
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
-            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0,verbose=(step % 500 == 0)) #######
+            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0,verbose=False)#(step % 500 == 0)) #######
             #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
             self.sess.run(self.train_op, feed_dict=iter_feed_dict)
             if step % 20000 == 0:
@@ -102,8 +102,9 @@ class All_CNN_C(GenericNeuralNet):
             if step % 1000 == 0:
                 feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
                 retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
-                print('Train loss at step {}: {}'.format(step, self.sess.run(self.total_loss,\
-                        feed_dict=self.fill_feed_dict_with_all_ex(self.data_sets.train)))) #######
+                print('Train loss at step {}: {}, test loss {}'.format(step, self.sess.run(self.total_loss,\
+                        feed_dict=self.fill_feed_dict_with_all_ex(self.data_sets.train)),\
+                        self.sess.run(self.loss_no_reg,feed_dict=self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)))) #######
         
         np.savez('../output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
         print('Last Test Loss: {}'.format(retrain_losses[((end_step-start_step)//1000)-1]))
