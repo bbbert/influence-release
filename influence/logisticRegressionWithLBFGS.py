@@ -145,6 +145,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
                 save_checkpoints=False,
                 verbose=False)
 
+
     def train(self, num_steps=None, 
               iter_to_switch_to_batch=None, 
               iter_to_switch_to_sgd=None,

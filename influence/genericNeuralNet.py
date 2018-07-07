@@ -381,10 +381,11 @@ class GenericNeuralNet(object):
 
 
 
-    def warm_retrain(self, start_step, end_step, feed_dict, idx):        
+    def warm_retrain(self, start_step, end_step, feed_dict, idx):
         for step in xrange(start_step,end_step):
             self.update_learning_rate(step)
             self.sess.run(self.train_op, feed_dict=feed_dict)
+
 
 
     def update_learning_rate(self, step):

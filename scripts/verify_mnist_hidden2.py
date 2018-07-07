@@ -33,16 +33,22 @@ indices_to_remove = [1173,4644,1891,4936,1735,3562]
 seed = 0
 force_refresh=True
 train_dir = '../output'
-#mode = 'special'
-mode = 'damping'
-regpathname = '{}/{}_seed{}_losses_logreg'.format(train_dir,mode,seed)
+mode = 'special'
+#mode = 'damping'
+regpathname = '{}/{}_seed{}_losses'.format(train_dir,mode,seed)
 test_idx = 6558
 num_steps = 300000 ########
 
 print("Starting seed{}".format(seed))
 tf.reset_default_graph()
-model_name = '{}_mnist_small_all_cnn_c_hidden0_seed{}_iter-{}'.format(mode,seed,num_steps)
+model_name = '{}_mnist_small_all_cnn_c_hidden2_seed{}_iter-{}'.format(mode,seed,num_steps)
 model = All_CNN_C(load_config(model_name))
+
+#double-caution
+model.weight_decay = 0.001
+model.initial_learning_rate = 0.01
+model.decay_epochs = [1500,6000,15000,25000]
+model.damping = 0
 
 print('Initial learning rate {}, decay epochs {}'.format(model.initial_learning_rate,model.decay_epochs))
 
@@ -60,11 +66,6 @@ np.savez(regpathname, losses=losses, losses_fine=losses_fine)
 
 
 model.load_checkpoint(num_steps-1,True)
-#model.damping = 0#####
-
-#f = np.load('../output/logreg_hidden0_params.npz')
-#print(f['hidden0_params'])
-#print(model.sess.run(model.get_all_params()))
 
 pred_infl = model.get_influence_on_test_loss([test_idx],
         indices_to_remove,
@@ -87,7 +88,7 @@ warm_loss_diffs = experiments.test_only_retraining(
         do_sanity_checks=True
         )
 model.load_checkpoint(num_steps-1,True)
-np.savez('{}/{}_seed{}_warm_pred_infl_logreg_remove_{}'.format(train_dir,mode,seed,indices_to_remove),
+np.savez('{}/{}_seed{}_warm_pred_infl_remove_{}'.format(train_dir,mode,seed,indices_to_remove),
         warm_infl=warm_loss_diffs,
         pred_infl=model.get_influence_on_test_loss([test_idx],
             np.arange(len(model.data_sets.train.labels)),
@@ -96,15 +97,21 @@ np.savez('{}/{}_seed{}_warm_pred_infl_logreg_remove_{}'.format(train_dir,mode,se
         )
 print(losses)
 print(losses_fine)
-"""
+
 # Complete retraining
 for point in indices_to_remove:
-    rempathname = '{}/{}_seed{}_remove{}_only_losses_logreg'.format(train_dir,mode,seed,point)
+    rempathname = '{}/{}_seed{}_remove{}_only_losses'.format(train_dir,mode,seed,point)
     print("Starting seed{} removing {}".format(seed,point))
     tf.reset_default_graph()
-    model_name = '{}_mnist_small_all_cnn_c_hidden0_seed{}_iter-{}_remove_{}'.format(mode,seed,num_steps,point)
+    model_name = '{}_mnist_small_all_cnn_c_hidden2_seed{}_iter-{}_remove_{}'.format(mode,seed,num_steps,point)
     model = All_CNN_C(load_config(model_name))
     
+    #double-caution
+    model.weight_decay = 0.001
+    model.initial_learning_rate = 0.01
+    model.decay_epochs = [1500,6000,15000,25000]
+    model.damping = 0
+
     print('Initial learning rate {}, decay epochs {}'.format(model.initial_learning_rate,model.decay_epochs))
 
     model.data_sets.train._omits[point] = True ### Forgot to put this in the configs; needs omits
@@ -121,4 +128,4 @@ for point in indices_to_remove:
     np.savez(rempathname,losses_removed=losses_removed,losses_removed_fine=losses_removed_fine)
     print(losses_removed)
     print(losses_removed_fine)
-"""
+
