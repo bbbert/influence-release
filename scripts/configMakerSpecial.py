@@ -19,11 +19,11 @@ if model == 'all_cnn_c_hidden':
     hidden_units = [8,8]#[]
     weight_decay = 0.001#0.01#0.001
     damping = 0#2e-2
-    decay_epochs = [1500,6000,15000,25000]#[1000,3000,5000]#[500,1000,3000]#[5000,10000]
+    decay_epochs = [3000,18000,32000]#[1000,3000,5000]#[500,1000,3000]#[5000,10000]
     batch_size = 500
-    initial_learning_rate = 0.01#0.001#0.0001
-    num_steps = 300000
-    model_name = 'special_{}_{}{}_seed{}_iter-{}_remove_3562'.format(dataset_type, model, len(hidden_units), seed, num_steps)
+    initial_learning_rate = 0.001#0.0001
+    num_steps = 550000 #300000
+    model_name = 'relaxed_{}_{}{}_seed{}_iter-{}_remove_3562'.format(dataset_type, model, len(hidden_units), seed, num_steps)
 elif model == 'logreg_lbfgs':
     weight_decay = 0.01
     damping = 0.0

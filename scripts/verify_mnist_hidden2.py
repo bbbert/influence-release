@@ -33,27 +33,30 @@ indices_to_remove = [1173,4644,1891,4936,1735,3562]
 seed = 0
 force_refresh=True
 train_dir = '../output'
+#mode = 'relaxed'
 mode = 'special'
 #mode = 'damping'
-regpathname = '{}/{}_seed{}_losses'.format(train_dir,mode,seed)
+
 test_idx = 6558
-num_steps = 300000 ########
+num_steps = 550000 ########
 
 print("Starting seed{}".format(seed))
 tf.reset_default_graph()
 model_name = '{}_mnist_small_all_cnn_c_hidden2_seed{}_iter-{}'.format(mode,seed,num_steps)
 model = All_CNN_C(load_config(model_name))
+regpathname = '{}/{}_seed{}_losses'.format(train_dir,model_name,seed)
 
 #double-caution
-model.weight_decay = 0.001
-model.initial_learning_rate = 0.01
-model.decay_epochs = [1500,6000,15000,25000]
-model.damping = 0
+#model.weight_decay = 0.001
+#model.initial_learning_rate = 0.001
+#model.decay_epochs = [3000,18000,32000]
+#model.damping = 0
 
+print('Model {}'.format(model_name))
 print('Initial learning rate {}, decay epochs {}'.format(model.initial_learning_rate,model.decay_epochs))
-
+"""
 # Training
-if os.path.exists('{}.npz'.format(regpathname)):# and not force_refresh:
+if os.path.exists('{}.npz'.format(regpathname)) and not force_refresh:
     f = np.load('{}.npz'.format(regpathname))
     losses = f['losses']
     losses_fine = f['losses_fine'] 
@@ -63,9 +66,9 @@ else:
         iter_to_switch_to_sgd=10000000)
     losses,losses_fine = model.get_all_losses()
 np.savez(regpathname, losses=losses, losses_fine=losses_fine)
-
-
+"""
 model.load_checkpoint(num_steps-1,True)
+model.damping = 1e-2
 
 pred_infl = model.get_influence_on_test_loss([test_idx],
         indices_to_remove,
@@ -73,21 +76,23 @@ pred_infl = model.get_influence_on_test_loss([test_idx],
         batch_size='default'
         )
 print('Predicted: {}'.format(pred_infl))
-
+"""
 # Warm-start retraining
 warm_loss_diffs = experiments.test_only_retraining(
         model,
         num_to_remove=len(indices_to_remove),
         test_idx=test_idx,
         iter_to_load=num_steps-1,
-        num_steps=600000,
+        num_steps=num_steps*2,
         remove_type='manual',
         force_refresh=True,
         random_seed=None,
         indices_to_remove=indices_to_remove,
         do_sanity_checks=True
         )
+
 model.load_checkpoint(num_steps-1,True)
+
 np.savez('{}/{}_seed{}_warm_pred_infl_remove_{}'.format(train_dir,mode,seed,indices_to_remove),
         warm_infl=warm_loss_diffs,
         pred_infl=model.get_influence_on_test_loss([test_idx],
@@ -100,18 +105,19 @@ print(losses_fine)
 
 # Complete retraining
 for point in indices_to_remove:
-    rempathname = '{}/{}_seed{}_remove{}_only_losses'.format(train_dir,mode,seed,point)
     print("Starting seed{} removing {}".format(seed,point))
     tf.reset_default_graph()
     model_name = '{}_mnist_small_all_cnn_c_hidden2_seed{}_iter-{}_remove_{}'.format(mode,seed,num_steps,point)
     model = All_CNN_C(load_config(model_name))
-    
+    rempathname = '{}/{}_seed{}_remove{}_only_losses'.format(train_dir,model_name,seed,point)
+   
     #double-caution
-    model.weight_decay = 0.001
-    model.initial_learning_rate = 0.01
-    model.decay_epochs = [1500,6000,15000,25000]
-    model.damping = 0
+    #model.weight_decay = 0.001
+    #model.initial_learning_rate = 0.001
+    #model.decay_epochs = [3000,18000,32000]
+    #model.damping = 0
 
+    print('Model {}'.format(model_name))
     print('Initial learning rate {}, decay epochs {}'.format(model.initial_learning_rate,model.decay_epochs))
 
     model.data_sets.train._omits[point] = True ### Forgot to put this in the configs; needs omits
@@ -128,4 +134,4 @@ for point in indices_to_remove:
     np.savez(rempathname,losses_removed=losses_removed,losses_removed_fine=losses_removed_fine)
     print(losses_removed)
     print(losses_removed_fine)
-
+"""
