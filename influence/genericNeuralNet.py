@@ -482,7 +482,7 @@ class GenericNeuralNet(object):
         return self.test_losses, self.test_losses_fine
 
 
-    def load_checkpoint(self, iter_to_load, do_checks):
+    def load_checkpoint(self, iter_to_load, do_checks=True):
         checkpoint_to_load = "%s-%s" % (self.checkpoint_file, iter_to_load) 
         self.saver.restore(self.sess, checkpoint_to_load)
         if os.path.exists(self.rngs_file+".npz"):
