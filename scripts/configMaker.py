@@ -6,6 +6,9 @@ from __future__ import unicode_literals
 import os, warnings
 import cPickle as pickle
 
+def load_config(model_name):
+    return pickle.load(open('configs/config_dict_{}.pickle'.format(model_name), 'rb'))
+
 def get_model_name(nametag, dataset_type, model_type, seed, num_units=None, num_steps=None):
     assert dataset_type in ['mnist', 'mnist_small']
     assert model_type in ['all_cnn_c_hidden', 'logreg_lbfgs']
@@ -16,23 +19,18 @@ def get_model_name(nametag, dataset_type, model_type, seed, num_units=None, num_
     elif model_type == 'logreg_lbfgs':
         return '{}_{}_{}_seed{}'.format(nametag, dataset_type, model_type, seed)
 
-def make_config(seed, model_type, num_steps=300000, out='../output', nametag='default', save=True):
-
-    test_idx = 6558
-    seed = seed
-    model_type = model_type
-    dataset_type = 'mnist_small'
+def make_config(seed, dataset_type, model_type, num_steps=300000, out='../output', nametag='default', save=True, test_idx=6558):
 
     assert dataset_type in ['mnist', 'mnist_small']
     assert model_type in ['all_cnn_c_hidden', 'logreg_lbfgs']
 
     if model_type == 'all_cnn_c_hidden':
-        hidden_units = [8,8]
-        weight_decay = 0.001
-        damping = 2e-2
-        decay_epochs = [5000,10000]
+        hidden_units = [8,8]#[8,8,8]#[8,8]
+        weight_decay = 0.001#0.01#0.001
+        damping = 2e-2#2e-3#2e-2
+        decay_epochs = [5000,10000]#[500,1000,2500,5000,7500]#[5000,10000]
         batch_size = 500
-        initial_learning_rate = 0.0001
+        initial_learning_rate = 0.0001#0.01#0.0001
         num_steps = num_steps
         model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, num_units=len(hidden_units), seed=seed, num_steps=num_steps)
     elif model_type == 'logreg_lbfgs':

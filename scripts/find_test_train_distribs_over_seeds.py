@@ -27,14 +27,14 @@ import argparse
 #point = args.point
 #seed = args.seed
 
-seeds = [0]
-dataset_type = 'mnist_small'
+seeds = range(260,270)#+range(166,170)#range(8)
+dataset_type = 'mnist_small'#'mnist'#'mnist_small'
 model_type = 'all_cnn_c_hidden'
-num_units = 2
+num_units = 2#3#2
 out = '../output-week3'
 nametag = 'find_distribs'
 force_refresh=True
-num_steps = 300000
+num_steps = 300000#1000000#300000
 
 test_idx = 6558
 
@@ -42,8 +42,8 @@ for seed in seeds:
     tf.reset_default_graph()
 
     print("Starting seed {}".format(seed))
-    model_name = get_model_name(nametag=nametag, dataset_type=datset_type, model_type=model_type, seed=seed, num_units=num_units, num_steps=num_steps)
-    model = All_CNN_C(make_config(seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True))
+    model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed, num_units=num_units, num_steps=num_steps)
+    model = All_CNN_C(make_config(dataset_type=dataset_type, seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True))
     lossespathname = '{}/{}_test_losses_over_time'.format(out, model_name)
 
     print('Model {}'.format(model_name))
@@ -65,12 +65,13 @@ for seed in seeds:
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
     test_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_test_feed_dict)
     pred_infl = model.get_influence_on_test_loss(
-            [test_idx],
+            [test_idx],#[8],#[test_idx],
             np.arange(len(model.data_sets.train.labels)),
-            force_refresh=False,
+            force_refresh=True,
             batch_size='default'
             )
 
+    #np.savez('{}/{}_train_test_losses_pred_infl_on_8'.format(out,model_name),
     np.savez('{}/{}_train_test_losses_pred_infl'.format(out,model_name),
             train_losses=train_losses,
             test_losses=test_losses,

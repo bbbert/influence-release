@@ -92,8 +92,10 @@ class GenericNeuralNet(object):
         self.dataset_type = gen_dict['dataset_type']
         if self.dataset_type == 'mnist':
             self.data_sets = load_mnist('data')
+            print('LOADED FULL MNIST')
         elif self.dataset_type == 'mnist_small':
             self.data_sets = load_small_mnist('data')
+            print('LOADED SMALL MNIST')
         else:
             warnings.warn('Invalid dataset')
 
