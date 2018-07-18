@@ -50,7 +50,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     elif dataset_type in ['cifar10', 'cifar10_small']:
         input_side = 32
         input_channels = 3
-        input_dim = input_side * input_side * input_channels
+    input_dim = input_side * input_side * input_channels
 
     #genericNN
     gen_dict = {
