@@ -44,6 +44,14 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         initial_learning_rate = 0.001
         model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
 
+    if dataset_type in ['mnist', 'mnist_small']:
+        input_side = 28
+        input_channels = 1
+    elif dataset_type in ['cifar10', 'cifar10_small']:
+        input_side = 32
+        input_channels = 3
+        input_dim = input_side * input_side * input_channels
+
     #genericNN
     gen_dict = {
             'model_name':           model_name,
@@ -68,15 +76,15 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     #model-specific
     if model_type == 'all_cnn_c_hidden':
         spec_dict = {
-                'input_side':       28,
-                'input_channels':   1,
+                'input_side':       input_side,
+                'input_channels':   input_channels,
                 'conv_patch_size':  3,
                 'hidden_units':     hidden_units,
                 'weight_decay':     weight_decay
                 }
     elif model_type == 'logreg_lbfgs':
         spec_dict = {
-                'input_dim':        28*28,
+                'input_dim':        input_dim,
                 'weight_decay':     weight_decay,
                 'max_lbfgs_iter':   100
                 }

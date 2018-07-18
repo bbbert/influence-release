@@ -3,17 +3,21 @@
 import os
 import numpy as np
 import cPickle as pickle
-import download
-
-from dataset import one_hot_encoded
+import urllib
+import zipfile, tarfile
 
 from tensorflow.contrib.learn.python.learn.datasets import base
 from influence.dataset import DataSet
 
-def load_cifar10(train_dir, validation_size=0):
+def _one_hot_encoded(class_numbers, num_classes=None):
+    if num_classes is None:
+        num_classes = np.max(class_numbers)+1
+    return np.eye(num_classes, dtype=float)[class_numbers]
 
-    SOURCE_URL = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
-    
+def load_cifar10(train_dir, validation_size=5000):
+
+    SOURCE_URL = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
+
     img_size = 32
     num_channels = 3
     img_size_flat = img_size * img_size * num_channels
@@ -53,19 +57,34 @@ def load_cifar10(train_dir, validation_size=0):
 
         begin = 0
         for i in range(_num_files_train):
-            images_batch, labels_batch = _load_data(f='data+batch_'+str(i+1))
+            images_batch, labels_batch = _load_data(f='data_batch_'+str(i+1))
             end = begin + len(images_batch)
             images[begin:end,:] = images_batch
             labels[begin:end] = labels_batch
             begin = end
-        return images, labels, one_hot_encoded(class_numbers=labels, num_clases=num_classes)
+        return images, labels, _one_hot_encoded(class_numbers=labels, num_classes=num_classes)
 
     def _load_test_data():
         images, labels = _load_data(f='test_batch')
-        return images, labels, one_hot_encoded(class_numbers=labels, num_classes=num_classes)
+        return images, labels, _one_hot_encoded(class_numbers=labels, num_classes=num_classes)
 
-    local_file = download.maybe_download_and_extract(url=SOURCE_URL, download_dir=train_dir)
-    
+    def _maybe_download_and_extract(url, save_dir):
+        filename = url.split('/')[-1]
+        file_path = os.path.join(save_dir, filename)
+        if not os.path.exists(file_path):
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            print('Downloading.')
+            file_path, _ = urllib.urlretrieve(url=url, filename=file_path)
+            print('Download finished. Extracting.')
+            if file_path.endswith('.zip'):
+                zipfile.ZipFile(file=file_path,mode='r').extractal(save_dir)
+            elif file_path.endswith(('.tar.gz','.tgz')):
+                tarfile.open(name=file_path,mode='r:gz').extractall(save_dir)
+            print('Finished extracting.')
+
+    _maybe_download_and_extract(SOURCE_URL, train_dir)
+
     # no one-hot encoding of labels
     train_images, train_labels, _ = _load_training_data()
     test_images, test_labels, _ = _load_test_data()
@@ -94,6 +113,11 @@ def _load_small(data_sets, name, train_dir, validation_size, random_seed):
     train_images = train_images[perm,:]
     train_labels = train_labels[perm]
 
+    validation_images = data_sets.validation.x
+    validation_labels = data_sets.validation.labels
+    test_images = data_sets.test.x
+    test_labels = data_sets.test.labels
+
     savename = '../output/{}_small_save.npz'.format(name)
     if not os.path.exists(savename):
         np.savez(savename, train_images=train_images, train_labels=train_labels,
@@ -101,8 +125,10 @@ def _load_small(data_sets, name, train_dir, validation_size, random_seed):
                 test_images=test_images, test_labels=test_labels)
 
     train = DataSet(train_images, train_labels, 0, np.zeros(len(train_labels), dtype=bool))
+    validation = DataSet(validation_images, validation_labels, 0, np.zeros(validation_size, dtype=bool))
+    test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels), dtype=bool))
     return base.Datasets(train=train, validation=validation, test=test)
 
-def load_small_cifar10(train_dir, validation_size=0, random_seed=0):
+def load_small_cifar10(train_dir, validation_size=5000, random_seed=0):
     data_sets = load_cifar10(train_dir, validation_size)
     return _load_small(data_sets, 'cifar10', train_dir, validation_size, random_seed)

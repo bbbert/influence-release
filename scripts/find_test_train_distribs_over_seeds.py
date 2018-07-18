@@ -11,7 +11,7 @@ import tensorflow as tf
 import time
 import os.path
 
-import influence.experiments as experiments
+#import influence.experiments as experiments
 from influence.all_CNN_c import All_CNN_C
 from configMaker import make_config, get_model_name
 
