@@ -27,11 +27,11 @@ import argparse
 #point = args.point
 #seed = args.seed
 
-seeds = range(260,270)#+range(166,170)#range(8)
-dataset_type = 'mnist_small'#'mnist'#'mnist_small'
+seeds = [0]
+dataset_type = 'cifar10_small'#'mnist'#'mnist_small'
 model_type = 'all_cnn_c_hidden'
 num_units = 2#3#2
-out = '../output-week3'
+out = '../output-week4'#'../output-week3'
 nametag = 'find_distribs'
 force_refresh=True
 num_steps = 300000#1000000#300000

@@ -28,6 +28,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from influence.hessians import hessian_vector_product
 from influence.dataset import DataSet
 from load_mnist import load_mnist, load_small_mnist
+from load_cifar10 import load_cifar10, load_small_cifar10
 
 
 def variable(name, shape, initializer):
@@ -96,6 +97,12 @@ class GenericNeuralNet(object):
         elif self.dataset_type == 'mnist_small':
             self.data_sets = load_small_mnist('data')
             print('LOADED SMALL MNIST')
+        elif self.dataset_type == 'cifar10':
+            self.data_sets = load_cifar10('data')
+            print('LOADED FULL CIFAR10')
+        elif self.dataset_type == 'cifar10_small':
+            self.data_sets = load_small_cifar10('data')
+            print('LOADED SMALL CIFAR10')
         else:
             warnings.warn('Invalid dataset')
 

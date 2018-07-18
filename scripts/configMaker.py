@@ -6,12 +6,15 @@ from __future__ import unicode_literals
 import os, warnings
 import cPickle as pickle
 
+valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small']
+valid_models = ['all_cnn_c_hidden', 'logreg_lbfgs']
+
 def load_config(model_name):
     return pickle.load(open('configs/config_dict_{}.pickle'.format(model_name), 'rb'))
 
 def get_model_name(nametag, dataset_type, model_type, seed, num_units=None, num_steps=None):
-    assert dataset_type in ['mnist', 'mnist_small']
-    assert model_type in ['all_cnn_c_hidden', 'logreg_lbfgs']
+    assert dataset_type in valid_datasets
+    assert model_type in valid_models
 
     if model_type == 'all_cnn_c_hidden':
         assert num_units is not None and num_steps is not None
@@ -19,10 +22,10 @@ def get_model_name(nametag, dataset_type, model_type, seed, num_units=None, num_
     elif model_type == 'logreg_lbfgs':
         return '{}_{}_{}_seed{}'.format(nametag, dataset_type, model_type, seed)
 
-def make_config(seed, dataset_type, model_type, num_steps=300000, out='../output', nametag='default', save=True, test_idx=6558):
+def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='default', save=True, test_idx=6558):
 
-    assert dataset_type in ['mnist', 'mnist_small']
-    assert model_type in ['all_cnn_c_hidden', 'logreg_lbfgs']
+    assert dataset_type in valid_datasets
+    assert model_type in valid_models
 
     if model_type == 'all_cnn_c_hidden':
         hidden_units = [8,8]#[8,8,8]#[8,8]
