@@ -156,7 +156,7 @@ class All_CNN_C(GenericNeuralNet):
         last_layer_units = self.num_classes
         with tf.variable_scope('h{}_c'.format(self.num_hidden)):
             h_c.append(self.conv2d_softplus(h_a[-1], 1, self.hidden_units[-1], last_layer_units, stride=1))
-        
+
         h_d = tf.reduce_mean(h_c[-1], axis=[1, 2])
         
         with tf.variable_scope('softmax_linear'):

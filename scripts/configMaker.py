@@ -28,15 +28,40 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     assert model_type in valid_models
 
     if model_type == 'all_cnn_c_hidden':
-        hidden_units = [8,8]#[8,8,8]#[8,8]
-        weight_decay = 0.001#0.01#0.001
-        damping = 2e-2#2e-3#2e-2
-        decay_epochs = [5000,10000]#[500,1000,2500,5000,7500]#[5000,10000]
-        batch_size = 500
-        initial_learning_rate = 0.0001#0.01#0.0001
+        if dataset_type == 'mnist_small':
+            hidden_units = [8,8]
+            weight_decay = 0.001
+            damping = 2e-2
+            decay_epochs = [5000,10000]
+            initial_learning_rate = 0.0001
+            batch_size = 500
+        elif dataset_type == 'mnist':
+            hidden_units = [8,8,8]
+            weight_decay = 0.01
+            damping = 2e-3
+            decay_epochs = [500,1000,2500,5000,7500]
+            initial_learning_rate = 0.01
+            batch_size = 500
+        elif dataset_type == 'cifar10_small': #trash
+            hidden_units = [8,8]
+            weight_decay = 0.001
+            damping = 2e-2
+            initial_learning_rate = 0.0001
+            batch_size = 500
+        elif dataset_type == 'cifar10':
+            hidden_units = [8,8,8]
+            weight_decay = 0.001
+            damping = 2e-2
+            decay_epochs = [20,110,300,400,500]
+            initial_learning_rate = 0.01
+            batch_size = 32
         num_steps = num_steps
         model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, num_units=len(hidden_units), seed=seed, num_steps=num_steps)
     elif model_type == 'logreg_lbfgs':
+        if dataset_type in ['mnist', 'mnist_small']:
+            max_lbfgs_iter = 100
+        elif dataset_type in ['cifar10', 'cifar10_small']:
+            max_lbfgs_iter = 400
         weight_decay = 0.01
         damping = 0.0
         decay_epochs = [1000,10000]
@@ -86,7 +111,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         spec_dict = {
                 'input_dim':        input_dim,
                 'weight_decay':     weight_decay,
-                'max_lbfgs_iter':   100
+                'max_lbfgs_iter':   max_lbfgs_iter
                 }
     else:
         warnings.warn("Invalid model type")

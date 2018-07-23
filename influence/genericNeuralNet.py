@@ -402,6 +402,8 @@ class GenericNeuralNet(object):
         num_steps_in_epoch = (self.num_train_examples + self.batch_size - 1) // self.batch_size
         #num_steps_in_epoch = self.num_train_examples / self.batch_size
         epoch = step // num_steps_in_epoch
+        if step % 1000 == 0:
+            print('Epoch {}'.format(epoch))
 
         multiplier = 1
         for i in self.decay_epochs:
@@ -470,8 +472,8 @@ class GenericNeuralNet(object):
                     if step % 1000 == 0:
                         self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
         
-        print(self.test_losses_fine)
-        print(self.test_losses)
+        #print(self.test_losses_fine)
+        #print(self.test_losses)
 
     def save(self, step):
         self.saver.save(self.sess, self.checkpoint_file, global_step=step)

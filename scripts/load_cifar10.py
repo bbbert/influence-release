@@ -14,7 +14,7 @@ def _one_hot_encoded(class_numbers, num_classes=None):
         num_classes = np.max(class_numbers)+1
     return np.eye(num_classes, dtype=float)[class_numbers]
 
-def load_cifar10(train_dir, validation_size=5000):
+def load_cifar10(train_dir, validation_size=1000):
 
     SOURCE_URL = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
 
@@ -129,6 +129,6 @@ def _load_small(data_sets, name, train_dir, validation_size, random_seed):
     test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels), dtype=bool))
     return base.Datasets(train=train, validation=validation, test=test)
 
-def load_small_cifar10(train_dir, validation_size=5000, random_seed=0):
+def load_small_cifar10(train_dir, validation_size=1000, random_seed=0):
     data_sets = load_cifar10(train_dir, validation_size)
     return _load_small(data_sets, 'cifar10', train_dir, validation_size, random_seed)

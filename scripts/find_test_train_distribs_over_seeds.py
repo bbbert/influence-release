@@ -13,6 +13,7 @@ import os.path
 
 #import influence.experiments as experiments
 from influence.all_CNN_c import All_CNN_C
+from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 from scipy.stats import pearsonr
@@ -27,14 +28,18 @@ import argparse
 #point = args.point
 #seed = args.seed
 
-seeds = [0]
-dataset_type = 'cifar10_small'#'mnist'#'mnist_small'
+seeds = [18]
+dataset_type = 'cifar10'#'mnist'#'mnist_small'
 model_type = 'all_cnn_c_hidden'
-num_units = 2#3#2
+num_units = 3#2
 out = '../output-week4'#'../output-week3'
-nametag = 'find_distribs'
+nametag = 'find-distribs-deeper'#'find_distribs'
 force_refresh=True
-num_steps = 300000#1000000#300000
+
+if model_type == 'all_cnn_c_hidden':
+    num_steps = 1000000#300000
+elif model_type == 'logreg_lbfgs':
+    num_steps = 1
 
 test_idx = 6558
 
@@ -43,13 +48,17 @@ for seed in seeds:
 
     print("Starting seed {}".format(seed))
     model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed, num_units=num_units, num_steps=num_steps)
-    model = All_CNN_C(make_config(dataset_type=dataset_type, seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True))
+    config_dict = make_config(dataset_type=dataset_type, seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True)
+    if model_type == 'all_cnn_c_hidden':
+        model = All_CNN_C(config_dict)
+    elif model_type == 'logreg_lbfgs':
+        model = LogisticRegressionWithLBFGS(config_dict)
     lossespathname = '{}/{}_test_losses_over_time'.format(out, model_name)
 
     print('Model {}'.format(model_name))
 
     # Training
-    if os.path.exists('{}.npz'.format(lossespathname)) and not force_refresh:
+    if os.path.exists('{}.npz'.format(lossespathname)):# and not force_refresh:
         f = np.load('{}.npz'.format(lossespathname))
         losses = f['losses']
         losses_fine = f['losses_fine']
@@ -61,6 +70,7 @@ for seed in seeds:
     np.savez(lossespathname, losses=losses, losses_fine=losses_fine)
     
     model.load_checkpoint(num_steps-1,True)
+    print('Damping: {}'.format(model.damping))
 
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
     test_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_test_feed_dict)
