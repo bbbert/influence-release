@@ -28,7 +28,7 @@ import argparse
 #point = args.point
 #seed = args.seed
 
-seeds = [18]
+seeds = [19]#[23]
 dataset_type = 'cifar10'#'mnist'#'mnist_small'
 model_type = 'all_cnn_c_hidden'
 num_units = 3#2
@@ -58,7 +58,7 @@ for seed in seeds:
     print('Model {}'.format(model_name))
 
     # Training
-    if os.path.exists('{}.npz'.format(lossespathname)):# and not force_refresh:
+    if os.path.exists('{}.npz'.format(lossespathname)) and not force_refresh:
         f = np.load('{}.npz'.format(lossespathname))
         losses = f['losses']
         losses_fine = f['losses_fine']
