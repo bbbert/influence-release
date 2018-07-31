@@ -34,6 +34,11 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         self.input_dim = spec_dict['input_dim']
         self.max_lbfgs_iter = spec_dict['max_lbfgs_iter']
 
+        if spec_dict['has_biases'] is not None:
+            self.has_biases = spec_dict['has_biases']
+        else:
+            self.has_biases = False
+
         super(LogisticRegressionWithLBFGS, self).__init__(config_dict)
 
         self.set_params_op = self.set_params()
@@ -64,8 +69,11 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
     def get_all_params(self):
         all_params = []
         for layer in ['softmax_linear']:
-            #for var_name in ['weights', 'biases']:
-            for var_name in ['weights']:                
+            if self.has_biases:
+                names = ['weights', 'biases']
+            else:
+                names = ['weights']
+            for var_name in names:                
                 temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))            
                 all_params.append(temp_tensor)      
         return all_params        
@@ -89,16 +97,19 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
                 'weights', 
                 [self.input_dim * self.num_classes],
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
-                wd=self.weight_decay)            
-            logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes]))
-            #biases = variable(
-            #     'biases',
-            #     [self.num_classes],
-            #     tf.constant_initializer(0.0))
-            #logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes])) + biases
+                wd=self.weight_decay)
+            if not self.has_biases:
+                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes]))
+            else:
+                biases = variable(
+                    'biases',
+                    [self.num_classes],
+                    tf.constant_initializer(0.0))
+                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes])) + biases
 
         self.weights = weights
-        #self.biases = biases
+        if self.has_biases:
+            self.biases = biases
 
         return logits
 
@@ -114,14 +125,16 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tf.float32,
             shape=[self.input_dim * self.num_classes],
             name='W_placeholder')
-        #self.b_placeholder = tf.placeholder(
-        #     tf.float32,
-        #     shape=[self.num_classes],
-        #     name='b_placeholder')
-        set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
-        return [set_weights]
-        #set_biases = tf.assign(self.biases, self.b_placeholder, validate_shape=True)
-        #return [set_weights, set_biases]
+        if not self.has_biases:
+            set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
+            return [set_weights]
+        else:
+            self.b_placeholder = tf.placeholder(
+                 tf.float32,
+                shape=[self.num_classes],
+                name='b_placeholder')
+            set_biases = tf.assign(self.biases, self.b_placeholder, validate_shape=True)
+            return [set_weights, set_biases]
 
 
 
@@ -192,11 +205,13 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         # whereas our weights are defined as num_features x num_classes
         # so we have to tranpose them first.
         W = np.reshape(model.coef_.T, -1)
-        # b = model.intercept_
 
+        if self.has_biases:
+            b = model.intercept_
+            params_feed_dict[self.b_placeholder] = b
+        
         params_feed_dict = {}
         params_feed_dict[self.W_placeholder] = W
-        # params_feed_dict[self.b_placeholder] = b
         self.sess.run(self.set_params_op, feed_dict=params_feed_dict)
         if save_checkpoints: self.saver.save(self.sess, self.checkpoint_file, global_step=0)
 

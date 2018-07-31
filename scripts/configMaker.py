@@ -60,8 +60,10 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     elif model_type == 'logreg_lbfgs':
         if dataset_type in ['mnist', 'mnist_small']:
             max_lbfgs_iter = 100
+            has_biases = True ##### Normally False, but True for convexification
         elif dataset_type in ['cifar10', 'cifar10_small']:
             max_lbfgs_iter = 400
+            has_biases = True
         weight_decay = 0.01
         damping = 0.0
         decay_epochs = [1000,10000]
@@ -111,7 +113,8 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         spec_dict = {
                 'input_dim':        input_dim,
                 'weight_decay':     weight_decay,
-                'max_lbfgs_iter':   max_lbfgs_iter
+                'max_lbfgs_iter':   max_lbfgs_iter,
+                'has_biases':       has_biases
                 }
     else:
         warnings.warn("Invalid model type")
