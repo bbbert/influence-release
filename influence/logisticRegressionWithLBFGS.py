@@ -125,8 +125,8 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tf.float32,
             shape=[self.input_dim * self.num_classes],
             name='W_placeholder')
+        set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
         if not self.has_biases:
-            set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
             return [set_weights]
         else:
             self.b_placeholder = tf.placeholder(
