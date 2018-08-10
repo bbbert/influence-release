@@ -54,4 +54,4 @@ def get_train_grads_for_single_seed(seed):
     print('Done with seed {}'.format(seed))
 
 #get_train_grads_for_single_point(1173)#0)
-get_train_grads_for_single_seed(0)
+get_train_grads_for_single_seed(1)
