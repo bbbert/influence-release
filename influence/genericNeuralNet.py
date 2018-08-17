@@ -103,6 +103,14 @@ class GenericNeuralNet(object):
         elif self.dataset_type == 'cifar10_small':
             self.data_sets = load_small_cifar10('data')
             print('LOADED SMALL CIFAR10')
+        elif self.dataset_type == 'processed_imageNet':
+            train_f = np.load('data/dogfish_900_300_inception_features_new_train.npz')
+            train = DataSet(train_f['inception_features_val'],train_f['labels'],0,np.zeros(len(train_f['labels'],dtype=bool)))
+            test_f = np.load('data/dogfish_900_300_inception_features_new_test.npz')
+            test = DataSet(test_f['inception_features_val]',test_f['labels'],0,np.zeros(len(test_f['labels']),dtype=bool)))
+            validation = None
+            self.data_sets = base.Datasets(train=train,validation=validation,test=test)
+            print('LOADED PROCESSED IMAGENET')
         else:
             warnings.warn('Invalid dataset')
 

@@ -84,7 +84,7 @@ with full_graph.as_default():
                 inception_features_path, 
                 inception_features_val=inception_features_val,
                 labels=data_set.labels)
-
+"""
 
 train_f = np.load('output/%s_inception_features_new_train.npz' % dataset_name)
 train = DataSet(train_f['inception_features_val'], train_f['labels'])
@@ -212,3 +212,4 @@ for test_idx in range(num_test):
 
         if attack_success:
             break
+"""

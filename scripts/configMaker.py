@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import os, warnings
 import cPickle as pickle
 
-valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small']
+valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small', 'processed_imageNet']
 valid_models = ['all_cnn_c_hidden', 'logreg_lbfgs']
 
 def load_config(model_name):
@@ -55,6 +55,8 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
             decay_epochs = [20,110,300,400,500]
             initial_learning_rate = 0.01
             batch_size = 32
+        else:
+            print('Error: unknown default params for all_cnn_c_hidden on this dataset')
         num_steps = num_steps
         model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, num_units=len(hidden_units), seed=seed, num_steps=num_steps)
     elif model_type == 'logreg_lbfgs':
@@ -64,6 +66,11 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         elif dataset_type in ['cifar10', 'cifar10_small']:
             max_lbfgs_iter = 400
             has_biases = True
+        elif dataset_ty[e in ['processed_imageNet']:
+            max_lbfgs_iter = 100
+            has_biases = False
+        else:
+            print('error: unknown default params for logreg_lbfgs on this dataset')
         weight_decay = 0.01
         damping = 0.0
         decay_epochs = [1000,10000]
@@ -74,9 +81,13 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     if dataset_type in ['mnist', 'mnist_small']:
         input_side = 28
         input_channels = 1
+        num_classes = 10
     elif dataset_type in ['cifar10', 'cifar10_small']:
         input_side = 32
         input_channels = 3
+        num_classes = 10
+    elif dataset_type in ['processed_imageNet']:
+        num_classes = 2
     input_dim = input_side * input_side * input_channels
 
     #genericNN
@@ -94,7 +105,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
             'mini_batch':           True,
             'train_dir':            out,
             'log_dir':              'log',
-            'num_classes':          10,
+            'num_classes':          num_classes,
             'lissa_params':         {'batch_size':None,'scale':10,'damping':0.0,'num_samples':1,'recursion_depth':5000},
             'fmin_ncg_params':      {'avextol':1e-8,'maxiter':100},
             'test_grad_batch_size': 100
