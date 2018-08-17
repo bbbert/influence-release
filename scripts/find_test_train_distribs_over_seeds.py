@@ -20,15 +20,15 @@ from scipy.stats import pearsonr
 
 import argparse
 
-#parser = argparse.ArgumentParser(description='Input seed and point.')
-#parser.add_argument('seed', type=int)
+parser = argparse.ArgumentParser(description='Input seed')# and point.')
+parser.add_argument('seed', type=int)
 #parser.add_argument('point', type=int)
-#args=parser.parse_args()
+args=parser.parse_args()
 
 #point = args.point
-#seed = args.seed
+seed = args.seed
 
-seeds = [19]#[23]
+seeds = [seed]#[45]
 dataset_type = 'cifar10'#'mnist'#'mnist_small'
 model_type = 'all_cnn_c_hidden'
 num_units = 3#2

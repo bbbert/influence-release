@@ -836,7 +836,7 @@ class GenericNeuralNet(object):
         else:            
             num_to_remove = len(train_idx)
             predicted_loss_diffs = np.zeros([num_to_remove])
-            for counter, idx_to_remove in enumerate(train_idx):            
+            for counter, idx_to_remove in enumerate(train_idx):
                 single_train_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.train, idx_to_remove)
                 train_grad_loss_val = self.sess.run(self.grad_total_loss_op, feed_dict=single_train_feed_dict)
                 predicted_loss_diffs[counter] = np.dot(np.concatenate(inverse_hvp), np.concatenate(train_grad_loss_val)) / self.num_train_examples
