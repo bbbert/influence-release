@@ -66,7 +66,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         elif dataset_type in ['cifar10', 'cifar10_small']:
             max_lbfgs_iter = 400
             has_biases = True
-        elif dataset_ty[e in ['processed_imageNet']:
+        elif dataset_type in ['processed_imageNet']:
             max_lbfgs_iter = 100
             has_biases = False
         else:

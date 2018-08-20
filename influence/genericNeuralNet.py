@@ -105,9 +105,9 @@ class GenericNeuralNet(object):
             print('LOADED SMALL CIFAR10')
         elif self.dataset_type == 'processed_imageNet':
             train_f = np.load('data/dogfish_900_300_inception_features_new_train.npz')
-            train = DataSet(train_f['inception_features_val'],train_f['labels'],0,np.zeros(len(train_f['labels'],dtype=bool)))
+            train = DataSet(train_f['inception_features_val'],train_f['labels'],0,np.zeros(len(train_f['labels']),dtype=bool))
             test_f = np.load('data/dogfish_900_300_inception_features_new_test.npz')
-            test = DataSet(test_f['inception_features_val]',test_f['labels'],0,np.zeros(len(test_f['labels']),dtype=bool)))
+            test = DataSet(test_f['inception_features_val'],test_f['labels'],0,np.zeros(len(test_f['labels']),dtype=bool))
             validation = None
             self.data_sets = base.Datasets(train=train,validation=validation,test=test)
             print('LOADED PROCESSED IMAGENET')
@@ -443,6 +443,8 @@ class GenericNeuralNet(object):
 
         test_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
 
+        tracked_train_losses = []
+
         for step in xrange(num_steps):
             self.update_learning_rate(step)
 
@@ -465,7 +467,8 @@ class GenericNeuralNet(object):
             if verbose:
                 if step % 1000 == 0:
                     # Print status to stdout.
-                    print('Step %d: train loss = %.8f, test loss = %.8f (%.3f sec)' % (step, sess.run(self.total_loss, feed_dict=self.all_train_feed_dict), sess.run(self.loss_no_reg,feed_dict=test_feed_dict), duration)) ########
+                    train_loss_now = sess.run(self.total_loss, feed_dict=self.all_train_feed_dict)
+                    print('Step %d: train loss = %.8f, test loss = %.8f (%.3f sec)' % (step, train_loss_now, sess.run(self.loss_no_reg,feed_dict=test_feed_dict), duration)) ########
 
             # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
@@ -478,8 +481,14 @@ class GenericNeuralNet(object):
                     if step < 100:
                         self.test_losses_fine.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
                     if step % 1000 == 0:
+                        tracked_train_losses.append(train_loss_now)
                         self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
         
+        if track_losses:
+            np.savez(os.path.join(self.train_dir, "%s-tracked-train-losses" % self.model_name),
+                tracked_train_losses=tracked_train_losses)
+
+
         #print(self.test_losses_fine)
         #print(self.test_losses)
 

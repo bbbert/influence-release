@@ -112,10 +112,26 @@ def remove_cluster_and_retrain(seed, test_indices, removed_indices, name):
             test_indices, name), before_test_losses=before_test_losses, after_test_losses=\
             after_test_losses, influences=influences)
 
+def get_indices_on_worst_5(seed):
+    tf.reset_default_graph()
+    print('Starting seed {}'.format(seed))
+    model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
+    config_dict = make_config(seed=seed, dataset_type=dataset_type, model_type=model_type, out=out, test_idx=test_idx, nametag=nametag)
+    model = LogisticRegressionWithLBFGS(config_dict)
+    model.train()
+
+    influences = model.get_influence_on_test_loss([test_indices[5]], np.arange(num_points), False, 'default')
+    indices = np.argsort(-influences) # - is so that the most influential are at the start
+    np.savez('{}/{}_ordered_influences_on_worst_5_{}'.format(out,model_name,test_indices[5]),
+            indices=indices)
+    return indices
+
 for seed in seeds:
     #save_influence_vectors(seed, ignore_hess=True)
     model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
     f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
     # These are hard test points according to their losses
-    remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
-    remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
+    #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
+    #remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
+    indices = get_indices_on_worst_5(seed)
+    remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
