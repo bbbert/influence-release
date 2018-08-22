@@ -119,7 +119,7 @@ class GenericNeuralNet(object):
             print('LOADED HOSPITAL')
         else:
             warnings.warn('Invalid dataset')
-        print(self.data_sets.train.x.shape)
+        #print(self.data_sets.train.x.shape)
 
         for dataset in self.data_sets:
             if dataset is not None:

@@ -134,30 +134,18 @@ def load_hospital():
     test = DataSet(X_test, Y_test, 0, np.zeros(len(X_test), dtype=bool))
     data_sets = base.Datasets(train=train, validation=validation, test=test)
 
-    lr_train = DataSet(X_train, np.array((Y_train + 1) / 2, dtype=int), 0, np.zeros(len(X_train), dtype=bool))
+    lr_train_Y = np.array((Y_train + 1) / 2, dtype=int)
+    lr_train = DataSet(X_train, lr_train_Y, 0, np.zeros(len(X_train), dtype=bool))
     lr_validation = None
-    lr_test = DataSet(X_test, np.array((Y_test + 1) / 2, dtype=int), 0, np.zeros(len(X_test), dtype=bool))
+    lr_test_Y = np.array((Y_test + 1) / 2, dtype=int)
+    lr_test = DataSet(X_test, lr_test_Y, 0, np.zeros(len(X_test), dtype=bool))
     lr_data_sets = base.Datasets(train=lr_train, validation=lr_validation, test=lr_test)
 
     test_children_idx = np.where(X_test[:, age_var_indices[0]] == 1)[0]
 
+    np.savez('data/hospital',train_x=X_train,test_x=X_test,train_labels=lr_train_Y,test_labels=lr_test_Y)
+
     return lr_data_sets
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

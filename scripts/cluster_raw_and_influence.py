@@ -14,16 +14,28 @@ from influence.hessians import hessians
 
 seeds = [0]
 num_seeds = len(seeds)
-dataset_type = 'hospital'#'processed_imageNet'#'mnist_small'
+#dataset_type = 'hospital'
+dataset_type = 'processed_imageNet'
+#dataset_type = 'mnist_small'
 model_type = 'logreg_lbfgs'
 #num_units = 2#3
 out = '../output-week6'
 nametag = 'cluster'#-no-damping'
 force_refresh = True
 #num_steps = 300000#1000000#300000
-test_idx = 0#1492#6558
-test_indices = [0]#[2157,2243,1492,684,1246,1225,367,1731,2318,1761]#[6651, 3906, 1790, 5734, 5888, 7859, 3853, 9009, 1530, 2293]
-num_points = 10000#9000#5500
+
+if dataset_type == 'hospital':
+    test_idx = 66678
+    test_indices = [66678, 2717, 54826, 2860, 2267, 3091]
+    num_points = 20000
+elif dataset_type == 'processed_imageNet':
+    test_idx = 1492
+    test_indices = [2157,2243,1492,684,1246,1225,367,1731,2318,1761]
+    num_points = 9000
+elif dataset_type == 'mnist_small':
+    test_idx = 6558
+    test_indices = [6651, 3906, 1790, 5734, 5888, 7859, 3853, 9009, 1530, 2293]
+    num_points = 5500
 
 def get_test_losses(model, test_pts):
     arr = []
@@ -69,7 +81,6 @@ def save_influence_vectors(seed, ignore_hess):
         else:
             infl_vectors[point] = - np.dot(inv_hess, train_grad_val)
     infl_vectors = np.array(infl_vectors)
-    print(infl_vectors.shape)
 
     print('Ending seed {}'.format(seed))
     np.savez('{}/{}_influence_vectors-{}-ignoring-hess-{}'.format(out, model_name, test_idx, ignore_hess), infl_vectors=infl_vectors)
@@ -127,11 +138,13 @@ def get_indices_on_worst_5(seed):
     return indices
 
 for seed in seeds:
-    save_influence_vectors(seed, ignore_hess=True)
-    #model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
+    #save_influence_vectors(seed, ignore_hess=True)
+    model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
+    f = np.load('{}/{}_fives_to_remove.npz'.format(out, model_name))
+    remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
     #f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
     # These are hard test points according to their losses
     #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
     #remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
-    #indices = get_indices_on_worst_5(seed)
-    #remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
+    indices = get_indices_on_worst_5(seed)
+    remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')

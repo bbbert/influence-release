@@ -34,12 +34,14 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         self.input_dim = spec_dict['input_dim']
         self.max_lbfgs_iter = spec_dict['max_lbfgs_iter']
 
+        self.num_classes = config_dict['gen']['num_classes']
+
         if spec_dict['has_biases'] is not None:
             self.has_biases = spec_dict['has_biases']
         else:
             self.has_biases = False
                 
-        if config_dict['gen']['num_classes'] == 2:
+        if self.num_classes == 2:
             multi_class='ovr'
             self.weight_shape = [self.input_dim]
             self.pseudo_num_classes = 1
