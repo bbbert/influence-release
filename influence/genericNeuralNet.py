@@ -29,6 +29,7 @@ from influence.hessians import hessian_vector_product
 from influence.dataset import DataSet
 from load_mnist import load_mnist, load_small_mnist
 from load_cifar10 import load_cifar10, load_small_cifar10
+from load_hospital import load_hospital
 
 
 def variable(name, shape, initializer):
@@ -104,15 +105,21 @@ class GenericNeuralNet(object):
             self.data_sets = load_small_cifar10('data')
             print('LOADED SMALL CIFAR10')
         elif self.dataset_type == 'processed_imageNet':
-            train_f = np.load('data/dogfish_900_300_inception_features_new_train.npz')
+            train_f = np.load('data/animals_900_300_inception_features_train.npz')
+            #train_f = np.load('data/dogfish_900_300_inception_features_new_train.npz')
             train = DataSet(train_f['inception_features_val'],train_f['labels'],0,np.zeros(len(train_f['labels']),dtype=bool))
-            test_f = np.load('data/dogfish_900_300_inception_features_new_test.npz')
+            test_f = np.load('data/animals_900_300_inception_features_test.npz')
+            #test_f = np.load('data/dogfish_900_300_inception_features_new_test.npz')
             test = DataSet(test_f['inception_features_val'],test_f['labels'],0,np.zeros(len(test_f['labels']),dtype=bool))
             validation = None
             self.data_sets = base.Datasets(train=train,validation=validation,test=test)
             print('LOADED PROCESSED IMAGENET')
+        elif self.dataset_type == 'hospital':
+            self.data_sets = load_hospital()
+            print('LOADED HOSPITAL')
         else:
             warnings.warn('Invalid dataset')
+        print(self.data_sets.train.x.shape)
 
         for dataset in self.data_sets:
             if dataset is not None:

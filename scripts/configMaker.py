@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import os, warnings
 import cPickle as pickle
 
-valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small', 'processed_imageNet']
+valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small', 'processed_imageNet', 'hospital']
 valid_models = ['all_cnn_c_hidden', 'logreg_lbfgs']
 
 def load_config(model_name):
@@ -69,6 +69,9 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         elif dataset_type in ['processed_imageNet']:
             max_lbfgs_iter = 100
             has_biases = False
+        elif dataset_type in ['hospital']:
+            max_lbfgs_iter = 100
+            has_biases = False
         else:
             print('error: unknown default params for logreg_lbfgs on this dataset')
         weight_decay = 0.01
@@ -82,13 +85,18 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         input_side = 28
         input_channels = 1
         num_classes = 10
+        input_dim = input_side * input_side * input_channels
     elif dataset_type in ['cifar10', 'cifar10_small']:
         input_side = 32
         input_channels = 3
         num_classes = 10
+        input_dim = input_side * input_side * input_channels
     elif dataset_type in ['processed_imageNet']:
+        num_classes = 10
+        input_dim = 2048
+    elif dataset_type in ['hospital']:
         num_classes = 2
-    input_dim = input_side * input_side * input_channels
+        input_dim = 127
 
     #genericNN
     gen_dict = {

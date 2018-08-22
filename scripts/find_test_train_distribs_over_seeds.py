@@ -20,12 +20,12 @@ from scipy.stats import pearsonr
 
 import argparse
 
-parser = argparse.ArgumentParser(description='Input seed')# and point.')
+parser = argparse.ArgumentParser(description='Input seed and point.')
 parser.add_argument('seed', type=int)
-#parser.add_argument('point', type=int)
+parser.add_argument('point', type=int)
 args=parser.parse_args()
 
-#point = args.point
+point = args.point
 seed = args.seed
 
 seeds = [seed]#[45]
@@ -41,7 +41,7 @@ if model_type == 'all_cnn_c_hidden':
 elif model_type == 'logreg_lbfgs':
     num_steps = 1
 
-test_idx = 6558
+test_idx = point#6558
 
 for seed in seeds:
     tf.reset_default_graph()
@@ -57,6 +57,7 @@ for seed in seeds:
 
     print('Model {}'.format(model_name))
 
+    """
     # Training
     if os.path.exists('{}.npz'.format(lossespathname)) and not force_refresh:
         f = np.load('{}.npz'.format(lossespathname))
@@ -68,6 +69,7 @@ for seed in seeds:
             iter_to_switch_to_sgd=10000000)
         losses,losses_fine = model.get_all_losses()
     np.savez(lossespathname, losses=losses, losses_fine=losses_fine)
+    """
     
     model.load_checkpoint(num_steps-1,True)
     print('Damping: {}'.format(model.damping))

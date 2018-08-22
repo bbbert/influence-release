@@ -14,16 +14,16 @@ from influence.hessians import hessians
 
 seeds = [0]
 num_seeds = len(seeds)
-dataset_type = 'mnist_small'
+dataset_type = 'hospital'#'processed_imageNet'#'mnist_small'
 model_type = 'logreg_lbfgs'
 #num_units = 2#3
 out = '../output-week6'
 nametag = 'cluster'#-no-damping'
 force_refresh = True
 #num_steps = 300000#1000000#300000
-test_idx = 6558
-test_indices = [6651, 3906, 1790, 5734, 5888, 7859, 3853, 9009, 1530, 2293]
-num_points = 5500
+test_idx = 0#1492#6558
+test_indices = [0]#[2157,2243,1492,684,1246,1225,367,1731,2318,1761]#[6651, 3906, 1790, 5734, 5888, 7859, 3853, 9009, 1530, 2293]
+num_points = 10000#9000#5500
 
 def get_test_losses(model, test_pts):
     arr = []
@@ -43,7 +43,7 @@ def save_influence_vectors(seed, ignore_hess):
     model.train()
 
     for test_pt in test_indices:
-        model.get_influence_on_test_loss([test_pt], [0], False, 'default')
+        model.get_influence_on_test_loss([test_pt], [0], True, 'default')
 
     train_losses = []
     for pt in range(num_points):
@@ -127,11 +127,11 @@ def get_indices_on_worst_5(seed):
     return indices
 
 for seed in seeds:
-    #save_influence_vectors(seed, ignore_hess=True)
-    model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
-    f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
+    save_influence_vectors(seed, ignore_hess=True)
+    #model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
+    #f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
     # These are hard test points according to their losses
     #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
     #remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
-    indices = get_indices_on_worst_5(seed)
-    remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
+    #indices = get_indices_on_worst_5(seed)
+    #remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')

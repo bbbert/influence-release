@@ -38,9 +38,18 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             self.has_biases = spec_dict['has_biases']
         else:
             self.has_biases = False
-
+                
+        if config_dict['gen']['num_classes'] == 2:
+            multi_class='ovr'
+            self.weight_shape = [self.input_dim]
+            self.pseudo_num_classes = 1
+        else:
+            multi_class='multinomial'
+            self.weight_shape = [self.input_dim * self.num_classes]
+            self.pseudo_num_classes = self.num_classes
+        
         super(LogisticRegressionWithLBFGS, self).__init__(config_dict)
-
+        
         self.set_params_op = self.set_params()
         # self.hessians_op = hessians(self.total_loss, self.params)        
         
@@ -51,7 +60,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tol=1e-8,
             fit_intercept=False, 
             solver='lbfgs',
-            multi_class='multinomial',
+            multi_class=multi_class,
             warm_start=True, #True
             max_iter=self.max_lbfgs_iter)
 
@@ -61,9 +70,9 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tol=1e-8,
             fit_intercept=False, 
             solver='lbfgs',
-            multi_class='multinomial',
+            multi_class=multi_class,
             warm_start=True, #True
-            max_iter=self.max_lbfgs_iter)        
+            max_iter=self.max_lbfgs_iter)  
 
 
     def get_all_params(self):
@@ -95,21 +104,25 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         with tf.variable_scope('softmax_linear'):
             weights = variable_with_weight_decay(
                 'weights', 
-                [self.input_dim * self.num_classes],
+                self.weight_shape,
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
                 wd=self.weight_decay)
             if not self.has_biases:
-                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes]))
+                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.pseudo_num_classes]))
             else:
                 biases = variable(
                     'biases',
                     [self.num_classes],
                     tf.constant_initializer(0.0))
-                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.num_classes])) + biases
+                logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.pseudo_num_classes])) + biases
 
         self.weights = weights
         if self.has_biases:
             self.biases = biases
+
+        if self.num_classes == 2:
+            zeros = tf.zeros_like(logits)
+            logits = tf.concat([zeros, logits], 1)
 
         return logits
 
@@ -123,7 +136,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         # See if we can automatically infer weight shape
         self.W_placeholder = tf.placeholder(
             tf.float32,
-            shape=[self.input_dim * self.num_classes],
+            shape=self.weight_shape,
             name='W_placeholder')
         set_weights = tf.assign(self.weights, self.W_placeholder, validate_shape=True)
         if not self.has_biases:
@@ -212,6 +225,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         
         params_feed_dict = {}
         params_feed_dict[self.W_placeholder] = W
+        print(Y_train)
         self.sess.run(self.set_params_op, feed_dict=params_feed_dict)
         if save_checkpoints: self.saver.save(self.sess, self.checkpoint_file, global_step=0)
 
