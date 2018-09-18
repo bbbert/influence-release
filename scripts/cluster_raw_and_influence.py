@@ -14,8 +14,8 @@ from influence.hessians import hessians
 
 seeds = [0]
 num_seeds = len(seeds)
-#dataset_type = 'hospital'
-dataset_type = 'processed_imageNet'
+dataset_type = 'hospital'
+#dataset_type = 'processed_imageNet'
 #dataset_type = 'mnist_small'
 model_type = 'logreg_lbfgs'
 #num_units = 2#3
@@ -25,8 +25,8 @@ force_refresh = True
 #num_steps = 300000#1000000#300000
 
 if dataset_type == 'hospital':
-    test_idx = 66678
-    test_indices = [66678, 2717, 54826, 2860, 2267, 3091]
+    test_idx = 23610
+    test_indices = [23610, 59146, 52564, 61257, 1756, 33424]
     num_points = 20000
 elif dataset_type == 'processed_imageNet':
     test_idx = 1492
@@ -123,7 +123,7 @@ def remove_cluster_and_retrain(seed, test_indices, removed_indices, name):
             test_indices, name), before_test_losses=before_test_losses, after_test_losses=\
             after_test_losses, influences=influences)
 
-def get_indices_on_worst_5(seed):
+def get_indices_on_worst_5(seed, label_num=5):
     tf.reset_default_graph()
     print('Starting seed {}'.format(seed))
     model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
@@ -131,20 +131,34 @@ def get_indices_on_worst_5(seed):
     model = LogisticRegressionWithLBFGS(config_dict)
     model.train()
 
-    influences = model.get_influence_on_test_loss([test_indices[5]], np.arange(num_points), False, 'default')
+    influences = model.get_influence_on_test_loss([test_indices[label_num]], np.arange(num_points), False, 'default')
     indices = np.argsort(-influences) # - is so that the most influential are at the start
-    np.savez('{}/{}_ordered_influences_on_worst_5_{}'.format(out,model_name,test_indices[5]),
-            indices=indices)
+    np.savez('{}/{}_ordered_influences_on_worst_{}_{}'.format(out,model_name,label_num,
+        test_indices[label_num]),indices=indices)
     return indices
 
 for seed in seeds:
     #save_influence_vectors(seed, ignore_hess=True)
     model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed)
-    f = np.load('{}/{}_fives_to_remove.npz'.format(out, model_name))
-    remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
-    #f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
-    # These are hard test points according to their losses
-    #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
-    #remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
-    indices = get_indices_on_worst_5(seed)
-    remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
+    if dataset_type == 'processed_imageNet':
+        f = np.load('{}/{}_fives_to_remove.npz'.format(out, model_name))
+        #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
+        #remove_cluster_and_retrain(seed, test_indices, f['fives'][0], 'fives')
+        indices = get_indices_on_worst_5(seed)
+        #remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
+        remove_cluster_and_retrain(seed, 'all', indices[:len(f['fives'][0])], 'top')
+    elif dataset_type == 'mnist_small':
+        f = np.load('{}/{}_fives_nines_to_remove.npz'.format(out, model_name))
+        #remove_cluster_and_retrain(seed, 'all', f['fives'][0], 'fives')
+        #remove_cluster_and_retrain(seed, 'all', f['nines'][0], 'nines')
+        indices = get_indices_on_worst_5(seed)
+        #remove_cluster_and_retrain(seed, test_indices, indices[:len(f['fives'][0])], 'top')
+        remove_cluster_and_retrain(seed, 'all', indices[:len(f['fives'][0])], 'top')
+    elif dataset_type == 'hospital':
+        f = np.load('{}/{}_ones_zeros_to_remove.npz'.format(out, model_name))
+        for group in ['ones', 'zeros']:
+            for which_test_indices in ['all', test_indices]:
+                remove_cluster_and_retrain(seed, which_test_indices, f[group][0], group)
+        indices = get_indices_on_worst_5(seed,1)
+        for which_test_indices in ['all', test_indices]:
+            remove_cluster_and_retrain(seed, which_test_indices, indices[:len(f['ones'][0])], 'top')

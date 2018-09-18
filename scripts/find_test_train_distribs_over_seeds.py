@@ -48,12 +48,13 @@ for seed in seeds:
 
     print("Starting seed {}".format(seed))
     model_name = get_model_name(nametag=nametag, dataset_type=dataset_type, model_type=model_type, seed=seed, num_units=num_units, num_steps=num_steps)
-    config_dict = make_config(dataset_type=dataset_type, seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True)
+    config_dict = make_config(dataset_type=dataset_type, seed=seed, model_type=model_type, out=out, nametag=nametag, num_steps=num_steps, save=True, test_idx=test_idx)
     if model_type == 'all_cnn_c_hidden':
         model = All_CNN_C(config_dict)
     elif model_type == 'logreg_lbfgs':
         model = LogisticRegressionWithLBFGS(config_dict)
     lossespathname = '{}/{}_test_losses_over_time'.format(out, model_name)
+    # I don't want to retrain, so the losses aren't valid to look at for all test_indices.
 
     print('Model {}'.format(model_name))
 
@@ -83,8 +84,7 @@ for seed in seeds:
             batch_size='default'
             )
 
-    #np.savez('{}/{}_train_test_losses_pred_infl_on_8'.format(out,model_name),
-    np.savez('{}/{}_train_test_losses_pred_infl'.format(out,model_name),
+    np.savez('{}/{}_train_test_losses_pred_infl_on_{}'.format(out,model_name,test_idx),
             train_losses=train_losses,
             test_losses=test_losses,
             pred_infl=pred_infl)

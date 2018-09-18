@@ -227,7 +227,6 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         
         params_feed_dict = {}
         params_feed_dict[self.W_placeholder] = W
-        print(Y_train)
         self.sess.run(self.set_params_op, feed_dict=params_feed_dict)
         if save_checkpoints: self.saver.save(self.sess, self.checkpoint_file, global_step=0)
 
