@@ -9,6 +9,8 @@ class ModelOutput(object):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
 
+        self.last_checkpt_epoch = None
+
     @property
     def history_path(self):
         return os.path.join(self.model_path, 'history.npz')
@@ -55,6 +57,8 @@ class ModelOutput(object):
             pickle.dump(model.get_state(), f)
         with open(dataset_state_path, 'w') as f:
             pickle.dump(dataset.get_state(), f)
+
+        self.last_checkpt_epoch = max(epoch, self.last_checkpt_epoch)
 
     def load_checkpt(self, epoch, model, dataset):
         model_state_path, model_ckpt_path, dataset_state_path = \
