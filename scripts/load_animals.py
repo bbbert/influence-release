@@ -13,6 +13,10 @@ from influence.inception_v3 import preprocess_input
 
 BASE_DIR = 'data' # TODO: change
 
+#http://mitra.stanford.edu/kundaje/pangwei/animals_900_300_inception_features_test.npz
+
+#http://mitra.stanford.edu/kundaje/pangwei/animals_900_300_inception_features_train.npz 
+
 def fill(X, Y, idx, label, img_path, img_side):
     img = image.load_img(img_path, target_size=(img_side, img_side))
     x = image.img_to_array(img)
