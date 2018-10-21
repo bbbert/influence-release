@@ -12,7 +12,6 @@ class Experiment(object):
         with open(config_path, 'r') as f:
             self.config = yaml.load(f.read())
 
-    # Running the experiment should be an idempotent operation on the output path
     def run(self):
         raise NotImplementedError()
 
@@ -28,6 +27,7 @@ class CNNExperiment(Experiment):
         self.load_base_dataset()
         self.initialize_model()
         self.do_initial_training()
+        self.predict_influence()
 
     def load_base_dataset(self):
         if self.config['dataset'] == "mnist_small":
@@ -68,7 +68,8 @@ class CNNExperiment(Experiment):
             checkpt_epoch = output.last_checkpt_epoch
             if checkpt_epoch is not None:
                 output.load_checkpt(checkpt_epoch, self.model, new_train)
-                train_loss_history = output.load_history()
+                data = output.load_history()
+                train_loss_history = data['train_loss_history']
 
             while self.model.epoch < max_epochs:
                 # TODO: figure out what to save
