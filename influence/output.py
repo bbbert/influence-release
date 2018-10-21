@@ -38,7 +38,7 @@ class ModelOutput(object):
     def load_checkpt_list(self):
         checkpt_list_path = self.checkpt_list_path
         if not os.path.exists(checkpt_list_path):
-            return np.array([])
+            return []
         return np.load(checkpt_list_path)['checkpt_list']
 
     def update_checkpt_list(self, epoch):
@@ -49,9 +49,10 @@ class ModelOutput(object):
     def load_history(self):
         return np.load(self.history_path)
 
-    def save_history(self, train_loss_history, converged=False):
+    def save_history(self, train_loss_history, test_loss_history, converged=False):
         np.savez(self.history_path,
                  train_loss_history=train_loss_history,
+                 test_loss_history=test_loss_history,
                  converged=converged)
 
     def get_epoch_checkpt_paths(self, epoch):

@@ -51,6 +51,8 @@ class CNNExperiment(Experiment):
         max_epochs = self.config['training']['max_epochs']
         convergence_tol = self.config['training']['convergence_tol']
 
+        test = self.base_dataset.test
+
         for seed in seeds:
             new_train = self.base_dataset.train.clone()
             new_train.init_state(seed)
@@ -63,6 +65,7 @@ class CNNExperiment(Experiment):
                 continue
 
             train_loss_history = []
+            test_loss_history = []
             self.model.reset_state(seed)
 
             checkpt_epoch = output.last_checkpt_epoch
@@ -70,16 +73,22 @@ class CNNExperiment(Experiment):
                 output.load_checkpt(checkpt_epoch, self.model, new_train)
                 data = output.load_history()
                 train_loss_history = data['train_loss_history']
+                test_loss_history = data['test_loss_history']
+            else:
+                # We want to save model before epoch 0
+                output.save_checkpt(self.model.epoch, self.model, new_train)
 
             while self.model.epoch < max_epochs:
                 # TODO: figure out what to save
-                train_losses = self.model.train_one_epoch(new_train)
+                train_losses, time_for_epoch = self.model.train_one_epoch(new_train)
+                test_losses = self.model.get_losses(test)
                 train_loss_history.extend(train_losses)
+                test_loss_history.extend(test_losses)
 
                 if self.model.epoch % checkpt_interval == 0:
                     output.save_checkpt(self.model.epoch, self.model, new_train)
-                    output.save_history(train_loss_history)
+                    output.save_history(train_loss_history, test_loss_history)
 
             output.save_checkpt(self.model.epoch, self.model, new_train)
-            output.save_history(train_loss_history, converged=True)
+            output.save_history(train_loss_history, test_loss_history, converged=True)
 
