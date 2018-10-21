@@ -9,8 +9,6 @@ class ModelOutput(object):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
 
-        self.last_checkpt_epoch = None
-
     @property
     def history_path(self):
         return os.path.join(self.model_path, 'history.npz')
@@ -23,8 +21,30 @@ class ModelOutput(object):
     def converged(self):
         if not os.path.exists(self.history_path):
             return False
-        with np.load(self.history_path) as data:
+        with self.load_history() as data:
             return bool(data['converged'])
+
+    @property
+    def checkpt_list_path(self):
+        return os.path.join(self.checkpt_path, 'checkpt_list.npz')
+
+    @property
+    def last_checkpt_epoch(self):
+        checkpt_list = self.load_checkpt_list()
+        if len(checkpt_list) == 0:
+            return None
+        return max(checkpt_list)
+
+    def load_checkpt_list(self):
+        checkpt_list_path = self.checkpt_list_path
+        if not os.path.exists(checkpt_list_path):
+            return np.array([])
+        return np.load(checkpt_list_path)['checkpt_list']
+
+    def update_checkpt_list(self, epoch):
+        cp_list = self.load_checkpt_list()
+        np.savez(self.checkpt_list_path,
+            checkpt_list=cp_list.append(epoch))
 
     def load_history(self):
         return np.load(self.history_path)
@@ -58,7 +78,7 @@ class ModelOutput(object):
         with open(dataset_state_path, 'w') as f:
             pickle.dump(dataset.get_state(), f)
 
-        self.last_checkpt_epoch = max(epoch, self.last_checkpt_epoch)
+        self.upate_checkpt_list(epoch)
 
     def load_checkpt(self, epoch, model, dataset):
         model_state_path, model_ckpt_path, dataset_state_path = \
