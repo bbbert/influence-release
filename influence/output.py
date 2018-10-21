@@ -38,11 +38,11 @@ class ModelOutput(object):
             os.makedirs(checkpt_path)
 
         # Things saved by the model but not by tensorflow
-        model_state_path = os.path.join(checkpt_path, 'model_state_{:d}')
+        model_state_path = os.path.join(checkpt_path, 'model_state_{:d}'.format(epoch))
         # Things saved by tensorflow, especially model weights
-        model_ckpt_path = os.path.join(checkpt_path, 'model_params_{:d}.ckpt')
+        model_ckpt_path = os.path.join(checkpt_path, 'model_params_{:d}.ckpt'.format(epoch))
         # Dataset batching order state
-        dataset_state_path = os.path.join(checkpt_path, 'dataset_state_{:d}')
+        dataset_state_path = os.path.join(checkpt_path, 'dataset_state_{:d}'.format(epoch))
 
         return model_state_path, model_ckpt_path, dataset_state_path
 
