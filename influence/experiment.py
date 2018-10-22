@@ -3,6 +3,7 @@ import os, sys
 import yaml
 
 from load_mnist import load_mnist, load_small_mnist
+from logger import Logger
 
 BASE_OUTPUT_DIR = os.environ("INFLUENCE_OUTPUT_PATH")
 
@@ -11,37 +12,52 @@ class Experiment(object):
         self.config_path = config_path
         with open(config_path, 'r') as f:
             self.config = yaml.load(f.read())
+        self.logger = None
 
+    # Each run should create its own logger
     def run(self):
         raise NotImplementedError()
+
+    def log(self, message):
+        assert self.logger is not None
+        self.logger.log(message)
 
 class CNNExperiment(Experiment):
     def __init__(self, config_path):
         super(self).__init__(config_path)
 
+    @property
     def get_path(self):
         return os.path.join(BASE_OUTPUT_DIR, 'cnn')
 
     @override
     def run(self):
+        self.logger = Logger(self.get_path, 'experiment')
         self.load_base_dataset()
         self.initialize_model()
         self.do_initial_training()
         self.predict_influence()
+        self.logger = None
 
     def load_base_dataset(self):
         if self.config['dataset'] == "mnist_small":
             self.base_dataset = load_small_mnist('data')
+            self.log("Loaded dataset {}".format(self.config['dataset']))
         else:
-            raise ValueError("Unknown dataset {}".format(self.config['dataset']))
+            message = "Failed to load unknown dataset {}".format(self.config['dataset'])
+            self.log(message)
+            raise ValueError(message)
 
     def initialize_model(self):
         model_cfg = self.config['model']
         if model_cfg['type'] == 'all_cnn_c_hidden':
             # TODO: initialize self.model with its training schedule too
+            self.log("Initialized model of type {}".format(model_cfg['type']))
             pass
         else:
-            raise ValueError("Unknown model type".format(model_cfg['type']))
+            message = "Failed to initialize model due to unknown type {}".format(model_cfg['type'])
+            self.log(message)
+            raise ValueError(message)
 
     def do_initial_training(self):
         seeds = range(self.config['seeds']['count'])
@@ -51,17 +67,24 @@ class CNNExperiment(Experiment):
         max_epochs = self.config['training']['max_epochs']
         convergence_tol = self.config['training']['convergence_tol']
 
+        self.log("Beginning initial training with seeds {}, ".format(seeds)
+                + "checkpt_interval {}, min_epochs {}, ".format(checkpt_interval, min_epochs)
+                + "max_epochs {}, convergence_tol {}.".format(max_epochs, convergence_tol))
+
         test = self.base_dataset.test
 
         for seed in seeds:
+            self.log("Beginning seed {}".format(seed))
+
             new_train = self.base_dataset.train.clone()
             new_train.init_state(seed)
 
-            seed_path = os.path.join(self.get_path(), "seed_{}".format(seed))
+            seed_path = os.path.join(self.get_path, "seed_{}".format(seed))
             initial_training_path = os.path.join(seed_path, "initial_training")
 
             output = ModelOutput(initial_training_path)
             if output.converged:
+                self.log("Skipped seed {}".format(seed))
                 continue
 
             train_loss_history = []
@@ -74,9 +97,13 @@ class CNNExperiment(Experiment):
                 data = output.load_history()
                 train_loss_history = data['train_loss_history']
                 test_loss_history = data['test_loss_history']
+                self.log("Loaded checkpoint before epoch {}".format(checkpt_epoch))
             else:
                 # We want to save model before epoch 0
                 output.save_checkpt(self.model.epoch, self.model, new_train)
+
+            # TODO: finish adding logger stuff for output and self
+            # TODO: this also currently doesn't check convergence
 
             while self.model.epoch < max_epochs:
                 # TODO: figure out what to save

@@ -2,12 +2,19 @@ import numpy as np
 import os
 import pickle
 
+from logger import Logger
+
 class ModelOutput(object):
     def __init__(self, model_path):
         self.model_path = model_path
+        self.logger = Logger(model_path, 'model_output')
 
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
+
+    @property
+    def log_path(self):
+        return self.logger.log_path
 
     @property
     def history_path(self):
@@ -35,6 +42,9 @@ class ModelOutput(object):
             return None
         return max(checkpt_list)
 
+    def log(self, message):
+        self.logger.log(message)
+
     def load_checkpt_list(self):
         checkpt_list_path = self.checkpt_list_path
         if not os.path.exists(checkpt_list_path):
@@ -45,6 +55,7 @@ class ModelOutput(object):
         cp_list = self.load_checkpt_list()
         np.savez(self.checkpt_list_path,
             checkpt_list=cp_list.append(epoch))
+        self.log("Updated checkpoint list with epoch {}".format(epoch))
 
     def load_history(self):
         return np.load(self.history_path)
@@ -54,6 +65,7 @@ class ModelOutput(object):
                  train_loss_history=train_loss_history,
                  test_loss_history=test_loss_history,
                  converged=converged)
+        self.log("Saved history, converged={}".format(converged))
 
     def get_epoch_checkpt_paths(self, epoch):
         checkpt_path = self.checkpt_path
@@ -80,6 +92,7 @@ class ModelOutput(object):
             pickle.dump(dataset.get_state(), f)
 
         self.upate_checkpt_list(epoch)
+        self.log("Saved model before epoch {}".format(epoch))
 
     def load_checkpt(self, epoch, model, dataset):
         model_state_path, model_ckpt_path, dataset_state_path = \
@@ -90,4 +103,5 @@ class ModelOutput(object):
             model.set_state(pickle.load(f))
         with open(dataset_state_path, 'r') as f:
             dataset.set_state(pickle.load(f))
-
+        
+        self.log("Loaded model before epoch {}".format(epoch))
