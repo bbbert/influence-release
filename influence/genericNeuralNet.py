@@ -27,10 +27,6 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 
 from influence.hessians import hessian_vector_product
 from influence.dataset import DataSet
-from load_mnist import load_mnist, load_small_mnist
-from load_cifar10 import load_cifar10, load_small_cifar10
-from load_hospital import load_hospital
-
 
 def variable(name, shape, initializer):
     dtype = tf.float32
@@ -83,90 +79,34 @@ class GenericNeuralNet(object):
     Multi-class classification.
     """
 
-    def __init__(self, config_dict):
-        
-        gen_dict = config_dict['gen']
+    def __init__(self, cfg):
 
-        self._batching_seed = gen_dict['batching_seed']
-        self._initialization_seed = gen_dict['initialization_seed']
+        self.seed = None
+        # N.B.: we set the global TF random seed. There are also operation-level random
+        # seeds, which we can sort of ignore if we set the global seed. However,
+        # it doesn't seem possible to get the intermediate internal state of this TF
+        # seed, so that can cause an issue when trying to restore a model midway.
+        #
+        # In current code, this doesn't matter because TF randomness is only used
+        # for variable initialization--just remember to always initialize in the same
+        # order! And if TF randomness plays a role in later features, we may want to
+        # control the op-level seeds.
 
-        self.batch_size = gen_dict['batch_size']
-        self.dataset_type = gen_dict['dataset_type']
-        if self.dataset_type == 'mnist':
-            self.data_sets = load_mnist('data')
-            print('LOADED FULL MNIST')
-        elif self.dataset_type == 'mnist_small':
-            self.data_sets = load_small_mnist('data')
-            print('LOADED SMALL MNIST')
-        elif self.dataset_type == 'cifar10':
-            self.data_sets = load_cifar10('data')
-            print('LOADED FULL CIFAR10')
-        elif self.dataset_type == 'cifar10_small':
-            self.data_sets = load_small_cifar10('data')
-            print('LOADED SMALL CIFAR10')
-        elif self.dataset_type == 'processed_imageNet':
-            train_f = np.load('data/animals_900_300_inception_features_train.npz')
-            #train_f = np.load('data/dogfish_900_300_inception_features_new_train.npz')
-            train = DataSet(train_f['inception_features_val'],train_f['labels'],0,np.zeros(len(train_f['labels']),dtype=bool))
-            test_f = np.load('data/animals_900_300_inception_features_test.npz')
-            #test_f = np.load('data/dogfish_900_300_inception_features_new_test.npz')
-            test = DataSet(test_f['inception_features_val'],test_f['labels'],0,np.zeros(len(test_f['labels']),dtype=bool))
-            validation = None
-            self.data_sets = base.Datasets(train=train,validation=validation,test=test)
-            print('LOADED PROCESSED IMAGENET')
-        elif self.dataset_type == 'hospital':
-            self.data_sets = load_hospital()
-            print('LOADED HOSPITAL')
-        else:
-            warnings.warn('Invalid dataset')
-        #print(self.data_sets.train.x.shape)
 
-        for dataset in self.data_sets:
-            if dataset is not None:
-                dataset.set_randomState_and_reset_rngs(self._batching_seed)
-        self.data_sets.train.reset_omits()
+        # Name ought to include seed?
+        self.model_name = '_'.join(cfg['dataset']['name'], cfg['type'], cfg['hidden_units'])
+        self.num_classes = cfg['dataset']['num_classes']
 
-        self.train_dir = gen_dict['train_dir']
-        self.log_dir = gen_dict['log_dir'] #unused
-        self.model_name = gen_dict['model_name']
-        self.num_classes = gen_dict['num_classes']
-        self.initial_learning_rate = gen_dict['initial_learning_rate']
-        self.decay_epochs = gen_dict['decay_epochs']
-        self.keep_probs = gen_dict['keep_probs']
-        self.mini_batch = gen_dict['mini_batch']
-        self.damping = gen_dict['damping']
-        self.test_point = gen_dict['test_point']
-
+        self.mini_batch = cfg['schedule']['mini_batch']
+        self.batch_size = cfg['schedule']['batch_size']
+        self.initial_learning_rate = cfg['schedule']['initial_learning_rate']
+        self.learning_rate_decay_epochs = cfg['schedule']['learning_rate_decay_epochs']
 
         # Default params for certain functions
-        self.lissa_params = gen_dict['lissa_params']
-        self.fmin_ncg_params = gen_dict['fmin_ncg_params']
-        self.test_grad_batch_size = gen_dict['test_grad_batch_size']
-
-        #if 'keep_probs' in kwargs: self.keep_probs = kwargs.pop('keep_probs')
-        
-        #else: self.keep_probs = None
-        
-        #if 'mini_batch' in kwargs: self.mini_batch = kwargs.pop('mini_batch')        
-        #else: self.mini_batch = True
-        
-        #if 'damping' in kwargs: self.damping = kwargs.pop('damping')
-        #else: self.damping = 0.0
-         
-        np.random.seed(self._batching_seed)
-        
-        # This sets the global tf random seed. There are also operation-level random
-        # seeds, which we can sort of ignore if we set the global seed. However,
-        # it doesn't seem possible to get the intermediate internal state of this tf
-        # seed, so that can cause an issue when trying to restore a model midway.
-        # In current code, this doesn't matter because tf randomness is only used
-        # for variable initialization--just remember to always initialize in the same
-        # order! And if tf randomness plays a role in later features, we may want to
-        # control the op-level seeds.
-        tf.set_random_seed(self._initialization_seed)
-       
-        if not os.path.exists(self.train_dir):
-            os.makedirs(self.train_dir)
+        self.lissa_params = cfg['infl_calc']['lissa_params']
+        self.fmin_ncg_params = cfg['infl_calc']['fmin_ncg_params']
+        self.test_grad_batch_size = cfg['infl_calc']['test_grad_batch_size']
+        self.hessian_damping = cfg['infl_calc']['hessian_damping']
 
         # Initialize session
         config = tf.ConfigProto()        
@@ -179,14 +119,7 @@ class GenericNeuralNet(object):
         self.num_test_examples = self.data_sets.test.labels.shape[0]
         
         # Setup inference and training
-        if self.keep_probs is not None:
-            self.keep_probs_placeholder = tf.placeholder(tf.float32, shape=(2))
-            warnings.warn("No longer using keep_probs", DeprecationWarning)
-            self.logits = self.inference(self.input_placeholder, self.keep_probs_placeholder)
-        elif hasattr(self, 'inference_needs_labels'):            
-            self.logits = self.inference(self.input_placeholder, self.labels_placeholder)
-        else:
-            self.logits = self.inference(self.input_placeholder)
+        self.logits = self.inference(self.input_placeholder)
 
         self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self.loss(
             self.logits, 
@@ -204,9 +137,6 @@ class GenericNeuralNet(object):
 
         # Setup misc
         self.saver = tf.train.Saver()
-        self.test_losses = []
-        self.test_losses_fine = []
-
 
         # Setup gradients and Hessians
         self.params = self.get_all_params()
@@ -216,7 +146,6 @@ class GenericNeuralNet(object):
         self.u_placeholder = [tf.placeholder(tf.float32, shape=a.get_shape()) for a in self.params]
 
         self.hessian_vector = hessian_vector_product(self.total_loss, self.params, self.v_placeholder)
-
         self.grad_loss_wrt_input_op = tf.gradients(self.total_loss, self.input_placeholder)        
 
         # Because tf.gradients auto accumulates, we probably don't need the add_n (or even reduce_sum)        
@@ -224,28 +153,28 @@ class GenericNeuralNet(object):
             [tf.reduce_sum(tf.multiply(a, array_ops.stop_gradient(b))) for a, b in zip(self.grad_total_loss_op, self.v_placeholder)])
 
         self.grad_influence_wrt_input_op = tf.gradients(self.influence_op, self.input_placeholder)
-    
-        self.checkpoint_file = os.path.join(self.train_dir, "%s-checkpoint" % self.model_name)
-        self.rngs_file = os.path.join(self.train_dir, "%s-rngs-checkpoint" % self.model_name)
-        self.test_losses_file = os.path.join(self.train_dir, "%s-tracked-losses-checkpoint" % self.model_name)
 
+        # TODO: Want to remove this?
         self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
         self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
 
-        init = tf.global_variables_initializer()        
-        self.sess.run(init)
+        # TODO: Ought to wait until reset_state is called, reset TF seed, then init?
+        # But this prevents vec_to_list...
+        #
+        # init = tf.global_variables_initializer()        
+        # self.sess.run(init)
+        # self.vec_to_list = self.get_vec_to_list_fn()
+        self.vec_to_list = None
 
-        self.vec_to_list = self.get_vec_to_list_fn()
+        # We don't use this
         self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
         if self.adversarial_loss is not None:
             self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
 
-
     def get_vec_to_list_fn(self):
         params_val = self.sess.run(self.params)
         self.num_params = len(np.concatenate(params_val))        
-        print('Total number of parameters: %s' % self.num_params)
-
+        #print('Total number of parameters: %s' % self.num_params)
 
         def vec_to_list(v):
             return_list = []
@@ -259,12 +188,6 @@ class GenericNeuralNet(object):
 
         return vec_to_list
 
-
-    def reset_datasets(self):
-        for data_set in self.data_sets:
-            if data_set is not None:
-                data_set.reset_batch()
-
     def warn_about_fill_feed_dict(self):
         warnings.warn("Use a dataset object and its omits instead of fill_feed_dict", DeprecationWarning)
 
@@ -275,7 +198,6 @@ class GenericNeuralNet(object):
             self.labels_placeholder: data_set.labels
         }
         return feed_dict
-
 
     def fill_feed_dict_with_all_but_one_ex(self, data_set, idx_to_remove):
 
@@ -448,8 +370,6 @@ class GenericNeuralNet(object):
 
         self.data_sets.train.reset_rng()
 
-        test_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
-
         tracked_train_losses = []
 
         for step in xrange(num_steps):
@@ -475,7 +395,7 @@ class GenericNeuralNet(object):
                 if step % 1000 == 0:
                     # Print status to stdout.
                     train_loss_now = sess.run(self.total_loss, feed_dict=self.all_train_feed_dict)
-                    print('Step %d: train loss = %.8f, test loss = %.8f (%.3f sec)' % (step, train_loss_now, sess.run(self.loss_no_reg,feed_dict=test_feed_dict), duration)) ########
+                    #print('Step %d: train loss = %.8f, test loss = %.8f (%.3f sec)' % (step, train_loss_now, sess.run(self.loss_no_reg,feed_dict=test_feed_dict), duration)) ########
 
             # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 100000 == 0 or (step + 1) == num_steps:
@@ -490,14 +410,7 @@ class GenericNeuralNet(object):
                     if step % 1000 == 0:
                         tracked_train_losses.append(train_loss_now)
                         self.test_losses.append(sess.run(self.loss_no_reg, feed_dict=test_feed_dict))
-        
-        if track_losses:
-            np.savez(os.path.join(self.train_dir, "%s-tracked-train-losses" % self.model_name),
-                tracked_train_losses=tracked_train_losses)
 
-
-        #print(self.test_losses_fine)
-        #print(self.test_losses)
 
     def save(self, step):
         self.saver.save(self.sess, self.checkpoint_file, global_step=step)
@@ -697,7 +610,7 @@ class GenericNeuralNet(object):
             else:
                 hessian_vector_val = [a + (b / float(num_iter)) for (a,b) in zip(hessian_vector_val, hessian_vector_val_temp)]
             
-        hessian_vector_val = [a + self.damping * b for (a,b) in zip(hessian_vector_val, v)]
+        hessian_vector_val = [a + self.hessian_damping * b for (a,b) in zip(hessian_vector_val, v)]
 
         return hessian_vector_val
 
@@ -829,7 +742,8 @@ class GenericNeuralNet(object):
         if test_description is None:
             test_description = test_indices
 
-        approx_filename = os.path.join(self.train_dir, '%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, test_description))
+        #approx_filename = os.path.join(self.train_dir, '%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, test_description))
+        # Supposed to load and/or return this, saving is external
         if os.path.exists(approx_filename) and force_refresh == False:
             inverse_hvp = list(np.load(approx_filename)['inverse_hvp'])
             print('Loaded inverse HVP from %s' % approx_filename)
@@ -935,8 +849,8 @@ class GenericNeuralNet(object):
 
         if test_description is None:
             test_description = test_indices
-
-        approx_filename = os.path.join(self.train_dir, '%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, test_description))
+        # Supposed to load and/or return this, saving is external
+        #approx_filename = os.path.join(self.train_dir, '%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, test_description))
         
         if os.path.exists(approx_filename) and force_refresh == False:
             inverse_hvp = list(np.load(approx_filename)['inverse_hvp'])

@@ -1,6 +1,10 @@
 name: cnn_unstable_over_seeds
 
-dataset: mnist_small
+dataset:
+  name: mnist_small
+  num_classes: 10
+  input_side: 28
+  input_channels: 1
 
 training:
   checkpoint_interval: 100
@@ -12,11 +16,32 @@ model:
   type: all_cnn_c_hidden
   hidden_units: [8, 8]
   weight_decay: 2.0e-2
+  conv_patch_size: 3
 
   schedule:
+    mini_batch: True
     batch_size: 500
     initial_learning_rate: 0.0001
     learning_rate_decay_epochs: [5000, 10000]
+
+  infl_calc:
+    test_grad_batch_size: 100
+    damping: 2.0e-2
+
+    # Our experiments probably don't involve LiSSA,
+    # which is a method of getting the inverse HVP
+    lissa_params:
+      batch_size: None
+      scale: 10
+      damping: 0.0
+      num_samples: 1
+      recursion_depth: 5000
+
+    # This is used for the other method of computing
+    # inverse HVP: conjugate gradients
+    fmin_ncg_params:
+      avextol: 1.0e-8
+      maxiter: 100
 
 seeds:
   count: 20

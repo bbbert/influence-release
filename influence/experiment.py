@@ -3,7 +3,8 @@ import os, sys
 import yaml
 
 from load_mnist import load_mnist, load_small_mnist
-from logger import Logger
+from influence.logger import Logger
+from influence.all_CNN_c import All_CNN_C
 
 BASE_OUTPUT_DIR = os.environ("INFLUENCE_OUTPUT_PATH")
 
@@ -32,7 +33,7 @@ class CNNExperiment(Experiment):
 
     @override
     def run(self):
-        self.logger = Logger(self.get_path, 'experiment')
+        self.logger = Logger(self.get_path, self.config['name'])
         self.load_base_dataset()
         self.initialize_model()
         self.do_initial_training()
@@ -40,20 +41,20 @@ class CNNExperiment(Experiment):
         self.logger = None
 
     def load_base_dataset(self):
-        if self.config['dataset'] == "mnist_small":
+        if self.config['dataset']['name'] == "mnist_small":
             self.base_dataset = load_small_mnist('data')
-            self.log("Loaded dataset {}".format(self.config['dataset']))
+            self.log("Loaded dataset {}".format(self.config['dataset']['name']))
         else:
-            message = "Failed to load unknown dataset {}".format(self.config['dataset'])
+            message = "Failed to load unknown dataset {}".format(self.config['dataset']['name'])
             self.log(message)
             raise ValueError(message)
 
     def initialize_model(self):
         model_cfg = self.config['model']
         if model_cfg['type'] == 'all_cnn_c_hidden':
-            # TODO: initialize self.model with its training schedule too
+            model_cfg['dataset'] = self.config['dataset']
+            self.model = All_CNN_C(model_cfg)
             self.log("Initialized model of type {}".format(model_cfg['type']))
-            pass
         else:
             message = "Failed to initialize model due to unknown type {}".format(model_cfg['type'])
             self.log(message)

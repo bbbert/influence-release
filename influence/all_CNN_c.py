@@ -31,23 +31,19 @@ def conv2d(x, W, r):
 def softplus(x):
     return tf.log(tf.exp(x) + 1)
 
-
 class All_CNN_C(GenericNeuralNet):
 
-    def __init__(self, config_dict):
-        spec_dict = config_dict['spec']
-
-        self.weight_decay = spec_dict['weight_decay']
-        self.input_side = spec_dict['input_side']
-        self.input_channels = spec_dict['input_channels']
-        self.conv_patch_size = spec_dict['conv_patch_size']
-        self.hidden_units = spec_dict['hidden_units']
+    def __init__(self, cfg):
+        self.weight_decay = cfg['weight_decay']
+        self.input_side = cfg['dataset']['input_side']
+        self.input_channels = cfg['dataset']['input_channels']
+        self.conv_patch_size = cfg['conv_patch_size']
+        self.hidden_units = cfg['hidden_units']
 
         self.num_hidden = len(self.hidden_units)
         self.input_dim = self.input_side * self.input_side * self.input_channels
 
-        super(All_CNN_C, self).__init__(config_dict)
-
+        super(All_CNN_C, self).__init__(cfg)
 
     def conv2d_softplus(self, input_x, conv_patch_size, input_channels, output_channels, stride):
         weights = variable_with_weight_decay(
@@ -64,11 +60,7 @@ class All_CNN_C(GenericNeuralNet):
             [output_channels],
             tf.constant_initializer(0.0))
         weights_reshaped = tf.reshape(weights, [conv_patch_size, conv_patch_size, input_channels, output_channels])
-        hidden = tf.nn.tanh(conv2d(input_x, weights_reshaped, stride) + biases)
-
-        return hidden
-
-
+        return tf.nn.tanh(conv2d(input_x, weights_reshaped, stride) + biases)
 
     def get_all_params(self):
         all_params = []
@@ -77,41 +69,8 @@ class All_CNN_C(GenericNeuralNet):
             else: names = ['weights', 'biases']
             for var_name in names:
                temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))
-               all_params.append(temp_tensor)      
+               all_params.append(temp_tensor)
         return all_params        
-        
-
-    def warm_retrain(self, start_step, end_step, idx, feed_dict):
-        omits = np.zeros(self.num_train_examples,dtype=bool)
-        if idx is not None:
-            omits[idx] = True
-        self.data_sets.train.set_omits(omits)
-        self.data_sets.train.reset_clone()
-
-        start_time = time.time()
-
-        retrain_losses = []
-        for step in xrange(start_step,end_step):
-            self.update_learning_rate(step)
-            iter_feed_dict = self.fill_feed_dict_with_batch(self.data_sets.train,which_rng="clone",batch_size=0,verbose=False)#(step % 500 == 0)) #######
-            #iter_feed_dict = self.fill_feed_dict_with_all_ex(retrain_dataset)
-            self.sess.run(self.train_op, feed_dict=iter_feed_dict)
-            if step % 20000 == 0:
-                print('Step {} took {} sec'.format(step,time.time() - start_time))
-                start_time = time.time()
-            if step % 1000 == 0:
-                feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)
-                retrain_losses.append(self.sess.run(self.loss_no_reg,feed_dict=feed_dict))
-                print('Train loss at step {}: {}, test loss {}'.format(step, self.sess.run(self.total_loss,\
-                        feed_dict=self.fill_feed_dict_with_all_ex(self.data_sets.train)),\
-                        self.sess.run(self.loss_no_reg,feed_dict=self.fill_feed_dict_with_one_ex(self.data_sets.test,self.test_point)))) #######
-        
-        np.savez('../output/{}_remove{}_retrain_losses'.format(self.model_name,idx),retrain_losses=retrain_losses)
-        print('Last Test Loss: {}'.format(retrain_losses[((end_step-start_step)//1000)-1]))
-
-        self.data_sets.train.reset_omits()
-
-
 
     def placeholder_inputs(self):
         input_placeholder = tf.placeholder(
@@ -123,7 +82,6 @@ class All_CNN_C(GenericNeuralNet):
             shape=(None),
             name='labels_placeholder')
         return input_placeholder, labels_placeholder
-
 
     def inference(self, input_x):
 
