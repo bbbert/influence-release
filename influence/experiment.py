@@ -102,20 +102,22 @@ class CNNExperiment(Experiment):
                 # We want to save model before epoch 0
                 output.save_checkpt(self.model.epoch, self.model, new_train)
 
-            # TODO: finish adding logger stuff for output and self
-            # TODO: this also currently doesn't check convergence
-
-            while self.model.epoch < max_epochs:
-                # TODO: figure out what to save
-                train_losses, time_for_epoch = self.model.train_one_epoch(new_train)
+            converged = False
+            while self.model.epoch < max_epochs or (converged and self.model.epoch < min_epochs):
+                train_losses, time_for_epoch, converged = self.model.train_one_epoch(new_train)
                 test_losses = self.model.get_losses(test)
                 train_loss_history.extend(train_losses)
                 test_loss_history.extend(test_losses)
+                
+                output.log("Epoch {} ({} ms): avg train loss {}, avg test loss {}".format(
+                    self.model.epoch-1, time_for_epoch, np.mean(train_losses), np.mean(test_losses))
 
                 if self.model.epoch % checkpt_interval == 0:
                     output.save_checkpt(self.model.epoch, self.model, new_train)
                     output.save_history(train_loss_history, test_loss_history)
+                    self.log("Completed {} epochs".format(self.model.epoch))
 
             output.save_checkpt(self.model.epoch, self.model, new_train)
-            output.save_history(train_loss_history, test_loss_history, converged=True)
-
+            output.save_history(train_loss_history, test_loss_history, converged=converged)
+            self.log("Completed training for seed {} after {} epochs, convergence={}".format(
+                seed, self.model.epoch, converged)
