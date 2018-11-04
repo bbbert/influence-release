@@ -35,7 +35,7 @@ class DataSet(object):
     def get_state(self):
         if self._rng is None:
             raise ValueError("The dataset's random state is not initialized.")
-        return (self._rng.get_state(), list(epoch_indices), index_in_epoch)
+        return (self._rng.get_state(), list(self._epoch_indices), self._index_in_epoch)
 
     def get_omits(self):
         return self._omits
@@ -44,26 +44,37 @@ class DataSet(object):
         self._omits = set(omits)
 
     def clone(self):
-        d = DataSet(self._x, self._labels, self._labels_to_omit)
+        d = DataSet(self._x, self._labels, self._omits)
         if self._rng is not None:
             d.set_state(self.get_state())
         return d
 
     @property
-    def x(self):
+    def full_x(self):
         return self._x
 
     @property
-    def labels(self):
+    def full_labels(self):
         return self._labels
+
+    @property
+    def x(self):
+        return self._x[self.labels]
+
+    @property
+    def labels(self):
+        if len(self._omits) == 0:
+            return self._labels
+        else:
+            return np.array([i for i in self._labels if i not in self._omits])
 
     @property
     def num_examples(self):
         return self._num_examples
 
     def new_epoch(self):
-        indices = np.arange(self._num_examples)
-        self._epoch_indices = np._rng.shuffle(indices)
+        self._epoch_indices = np.arange(self._num_examples)
+        self._rng.shuffle(self._epoch_indices)
         self._index_in_epoch = 0
 
     def next_batch(self, batch_size):
@@ -71,13 +82,13 @@ class DataSet(object):
 
         while len(selected_indices) < batch_size:
             indices_to_take = min(batch_size - len(selected_indices), self.num_examples - self._index_in_epoch)
-            selected_indices += self._epoch_indices[self._index_in_epoch : self._index_in_epoch + indices_to_take]
+            selected_indices.extend(self._epoch_indices[self._index_in_epoch : self._index_in_epoch + indices_to_take])
             self._index_in_epoch += indices_to_take
 
             if self._index_in_epoch >= self.num_examples:
                 self.new_epoch()
 
         # filter after selecting indices so that batch order stays the same
-        selected_indices = [i for i in selected_indices if self._labels[i] not in self._labels_to_omit]
+        selected_indices = [i for i in selected_indices if self._labels[i] not in self._omits]
 
         return self._x[selected_indices], self._labels[selected_indices]

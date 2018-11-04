@@ -1,20 +1,15 @@
 import numpy as np
 import os
 import pickle
-
-from logger import Logger
+import logging
 
 class ModelOutput(object):
     def __init__(self, model_path):
         self.model_path = model_path
-        self.logger = Logger(model_path, 'model_output')
+        self.logger = logging.getLogger("ModelOutput")
 
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
-
-    @property
-    def log_path(self):
-        return self.logger.log_path
 
     @property
     def history_path(self):
@@ -40,21 +35,21 @@ class ModelOutput(object):
         checkpt_list = self.load_checkpt_list()
         if len(checkpt_list) == 0:
             return None
-        return max(checkpt_list)
+        return checkpt_list[-1]
 
     def log(self, message):
-        self.logger.log(message)
+        self.logger.info(message)
 
     def load_checkpt_list(self):
         checkpt_list_path = self.checkpt_list_path
         if not os.path.exists(checkpt_list_path):
             return []
-        return np.load(checkpt_list_path)['checkpt_list']
+        return list(np.load(checkpt_list_path)['checkpt_list'])
 
     def update_checkpt_list(self, epoch):
-        cp_list = self.load_checkpt_list()
-        np.savez(self.checkpt_list_path,
-            checkpt_list=cp_list.append(epoch))
+        cp_list = set(self.load_checkpt_list())
+        cp_list.add(epoch)
+        np.savez(self.checkpt_list_path, checkpt_list=list(cp_list))
         self.log("Updated checkpoint list with epoch {}".format(epoch))
 
     def load_history(self):
@@ -91,7 +86,7 @@ class ModelOutput(object):
         with open(dataset_state_path, 'w') as f:
             pickle.dump(dataset.get_state(), f)
 
-        self.upate_checkpt_list(epoch)
+        self.update_checkpt_list(epoch)
         self.log("Saved model before epoch {}".format(epoch))
 
     def load_checkpt(self, epoch, model, dataset):

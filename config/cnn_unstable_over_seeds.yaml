@@ -26,7 +26,7 @@ model:
 
   infl_calc:
     test_grad_batch_size: 100
-    damping: 2.0e-2
+    hessian_damping: 2.0e-2
 
     # Our experiments probably don't involve LiSSA,
     # which is a method of getting the inverse HVP

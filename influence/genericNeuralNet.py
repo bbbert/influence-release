@@ -3,10 +3,10 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals  
 
-import abc
 import sys
 
 import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -80,21 +80,8 @@ class GenericNeuralNet(object):
     """
 
     def __init__(self, cfg):
-
-        self.seed = None
-        # N.B.: we set the global TF random seed. There are also operation-level random
-        # seeds, which we can sort of ignore if we set the global seed. However,
-        # it doesn't seem possible to get the intermediate internal state of this TF
-        # seed, so that can cause an issue when trying to restore a model midway.
-        #
-        # In current code, this doesn't matter because TF randomness is only used
-        # for variable initialization--just remember to always initialize in the same
-        # order! And if TF randomness plays a role in later features, we may want to
-        # control the op-level seeds.
-
-
         # Name ought to include seed?
-        self.model_name = '_'.join(cfg['dataset']['name'], cfg['type'], cfg['hidden_units'])
+        self.model_name = "{}_{}_{}".format(cfg['dataset']['name'], cfg['type'], cfg['hidden_units'])
         self.num_classes = cfg['dataset']['num_classes']
 
         self.mini_batch = cfg['schedule']['mini_batch']
@@ -109,15 +96,16 @@ class GenericNeuralNet(object):
         self.hessian_damping = cfg['infl_calc']['hessian_damping']
 
         # Initialize session
-        config = tf.ConfigProto()        
+        config = tf.ConfigProto()
         self.sess = tf.Session(config=config)
         K.set_session(self.sess)
-        
+
         # Setup input
         self.input_placeholder, self.labels_placeholder = self.placeholder_inputs()
-        self.num_train_examples = self.data_sets.train.labels.shape[0]
-        self.num_test_examples = self.data_sets.test.labels.shape[0]
-        
+        # TODO: the only things that use this are the learning rate schedule and the hessian batch vector calculation
+        # self.num_train_examples = self.data_sets.train.labels.shape[0]
+        # self.num_test_examples = self.data_sets.test.labels.shape[0]
+
         # Setup inference and training
         self.logits = self.inference(self.input_placeholder)
 
@@ -129,7 +117,8 @@ class GenericNeuralNet(object):
         self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False)
         self.learning_rate_placeholder = tf.placeholder(tf.float32)
         self.update_learning_rate_op = tf.assign(self.learning_rate, self.learning_rate_placeholder)
-        
+        self.epoch = 0
+
         self.train_op = self.get_train_op(self.total_loss, self.global_step, self.learning_rate)
         self.train_sgd_op = self.get_train_sgd_op(self.total_loss, self.global_step, self.learning_rate)
         self.accuracy_op = self.get_accuracy_op(self.logits, self.labels_placeholder)        
@@ -155,8 +144,8 @@ class GenericNeuralNet(object):
         self.grad_influence_wrt_input_op = tf.gradients(self.influence_op, self.input_placeholder)
 
         # TODO: Want to remove this?
-        self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
-        self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
+        # self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
+        # self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
 
         # TODO: Ought to wait until reset_state is called, reset TF seed, then init?
         # But this prevents vec_to_list...
@@ -170,6 +159,12 @@ class GenericNeuralNet(object):
         self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
         if self.adversarial_loss is not None:
             self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
+
+    def reset_state(self, seed):
+        # Re-initialize TF seed and use that to initialize parameters
+        tf.set_random_seed(seed)
+        init = tf.global_variables_initializer()
+        self.sess.run(init)
 
     def get_vec_to_list_fn(self):
         params_val = self.sess.run(self.params)
@@ -263,7 +258,6 @@ class GenericNeuralNet(object):
 
 
     def minibatch_mean_eval(self, ops, data_set):
-
         num_examples = data_set.num_examples
         #assert num_examples % self.batch_size == 0
         num_iter = (num_examples + self.batch_size - 1) // self.batch_size
@@ -358,6 +352,70 @@ class GenericNeuralNet(object):
             self.update_learning_rate_op, 
             feed_dict={self.learning_rate_placeholder: multiplier * self.initial_learning_rate})        
 
+    def train_one_epoch(self, dataset):
+        sess = self.sess
+
+        tracked_train_losses = []
+
+        all_train_feed_dict = {
+            self.input_placeholder: dataset.x,
+            self.labels_placeholder: dataset.labels,
+        }
+
+        # TODO: update learning rate by epoch
+        for offset in xrange(0, dataset.num_examples, self.batch_size):
+            current_batch_size = min(self.batch_size, dataset.num_examples - offset)
+
+            start_time = time.time()
+
+            # TODO: switch by epoch instead of step
+            # if step < iter_to_switch_to_batch:
+            #     pass
+            # elif step < iter_to_switch_to_sgd:
+            #     pass
+            # else:
+            #     pass
+
+            x, labels = dataset.next_batch(current_batch_size)
+            batch_feed_dict = {
+                self.input_placeholder: x,
+                self.labels_placeholder: labels,
+            }
+            _, loss_val = sess.run([self.train_op, self.total_loss], feed_dict=batch_feed_dict)
+
+            train_loss_now = sess.run(self.total_loss, feed_dict=all_train_feed_dict)
+            tracked_train_losses.append(train_loss_now)
+
+            duration = time.time() - start_time
+
+        # TODO: convergence test maybe via validation loss
+        converged = False
+        self.epoch += 1
+
+        return tracked_train_losses, duration, converged
+
+    def get_indiv_losses(self, dataset):
+        feed_dict = {
+            self.input_placeholder: dataset.x,
+            self.labels_placeholder: dataset.labels,
+        }
+        return self.sess.run(self.indiv_loss_no_reg, feed_dict=feed_dict)
+
+    def save_ckpt(self, ckpt_path):
+        # TODO: Save TF params and state into ckpt
+        pass
+
+    def load_ckpt(self, ckpt_path):
+        # TODO: Load TF params and state from ckpt
+        pass
+
+    def get_state(self):
+        # TODO: Return other state like epoch number, learning rate, etc
+        return ()
+
+    def set_state(self, state):
+        # TODO: Load model state
+        pass
 
     def train(self, num_steps, iter_to_switch_to_batch, iter_to_switch_to_sgd,
               save_checkpoints=True, verbose=True, track_losses=True):

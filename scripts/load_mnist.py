@@ -105,9 +105,9 @@ def load_mnist(train_dir, validation_size=5000):
   validation_images = validation_images.astype(np.float32) / 255
   test_images = test_images.astype(np.float32) / 255
 
-  train = DataSet(train_images, train_labels, 0, np.zeros(len(train_labels),dtype=bool))
-  validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
-  test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
+  train = DataSet(train_images, train_labels)
+  validation = DataSet(validation_images, validation_labels)
+  test = DataSet(test_images, test_labels)
 
   return base.Datasets(train=train, validation=validation, test=test)
 
@@ -142,7 +142,7 @@ def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
   # test_images = test_images[perm, :]
   # test_labels = test_labels[perm]
 
-  savename = '../output/mnist_small_save.npz'
+  savename = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/mnist_small_save.npz"))
   if not os.path.exists(savename):
     np.savez(savename,
           train_images=train_images,
@@ -151,10 +151,10 @@ def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
           validation_labels=validation_labels,
           test_images=test_images,
           test_labels=test_labels)
-  
-  train = DataSet(train_images, train_labels, 0, np.zeros(len(train_labels),dtype=bool))
-  validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
-  test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
+
+  train = DataSet(train_images, train_labels)
+  validation = DataSet(validation_images, validation_labels)
+  test = DataSet(test_images, test_labels)
 
   return base.Datasets(train=train, validation=validation, test=test)
 

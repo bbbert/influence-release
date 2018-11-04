@@ -70,7 +70,7 @@ class All_CNN_C(GenericNeuralNet):
             for var_name in names:
                temp_tensor = tf.get_default_graph().get_tensor_by_name("%s/%s:0" % (layer, var_name))
                all_params.append(temp_tensor)
-        return all_params        
+        return all_params
 
     def placeholder_inputs(self):
         input_placeholder = tf.placeholder(
@@ -78,7 +78,7 @@ class All_CNN_C(GenericNeuralNet):
             shape=(None, self.input_dim),
             name='input_placeholder')
         labels_placeholder = tf.placeholder(
-            tf.int32,             
+            tf.int32,
             shape=(None),
             name='labels_placeholder')
         return input_placeholder, labels_placeholder
