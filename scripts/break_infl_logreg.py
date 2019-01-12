@@ -16,7 +16,9 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 0 # irrelevant for convex model
-dataset_type = 'hospital' # 'processed_imageNet'
+dataset_type = 'processed_imageNet'
+# hospital is binary
+# processed_imageNet is 10-class
 model_type = 'logreg_lbfgs'
 out = '../output-break-infl-logreg'
 nametag = 'break-infl-logreg'
@@ -117,19 +119,25 @@ def get_same_grad_dir(num_train_pts, grad_loss, proportion=default_prop, num=def
         subsets.append(np.random.choice(cluster_indices, points, replace=False))
     return np.array(subsets), best, labels
 
-# assumes binary labels
 def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=default_num_subsets):
     points = int(proportion*num_train_pts)
-    pos_subsets, neg_subsets = [], []
-    neg, pos = min(labels), max(labels)
-    assert neg != pos
-    neg_inds, pos_inds = np.where(labels == neg)[0], np.where(labels == pos)[0]
-    assert len(neg_inds) >= points
-    assert len(pos_inds) >= points
+    label_vals, counts = np.unique(labels, return_counts=True)
+    valid_labels = []
+    valid_indices = []
+    for i in range(len(label_vals)):
+        if counts[i] >= points:
+            valid_labels.append(label_vals[i])
+            valid_indices.append(np.where(labels == label_vals[i])[0])
+    assert len(valid_indices) > 0
+    flat = np.ndarray.flatten(np.array(valid_indices))
+    label_to_ind = dict(zip(valid_labels, range(len(valid_indices))))
+
+    subsets = []
     for i in range(num):
-        neg_subsets.append(np.random.choice(neg_inds, points, replace=False))
-        pos_subsets.append(np.random.choice(pos_inds, points, replace=False))
-    return np.array(neg_subsets), np.array(pos_subsets)
+        sample = np.random.choice(flat)
+        sample_ind = label_to_ind[labels[sample]]
+        subsets.append(np.random.choice(valid_indices[sample_ind], points, replace=False))
+    return np.array(subsets)
 
 model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train()
 num_train_pts = model.num_train_examples
@@ -141,7 +149,7 @@ neg_tail_subsets, pos_tail_subsets = get_scalar_infl_tails(num_train_pts, pred_i
 print('Found scalar infl tail subsets.')
 same_grad_subsets, cluster_label, cluster_labels = get_same_grad_dir(num_train_pts, grad_loss)
 print('Found same gradient subsets.')
-neg_class_subsests, pos_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels)
+same_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels)
 print('Found same class subsets.')
 
 random_train_losses, random_test_losses = retrain(model, random_subsets)
@@ -153,12 +161,10 @@ pos_tail_train_losses, pos_tail_test_losses = retrain(model, pos_tail_subsets)
 print('Finished pos tails retraining.')
 same_grad_train_losses, same_grad_test_losses = retrain(model, same_grad_subsets)
 print('Finished same grad retraining.')
-neg_class_train_losses, neg_class_test_losses = retrain(model, neg_class_subsets)
-print('Finished neg class retraining.')
-pos_class_train_losses, pos_class_test_losses = retrain(model, pos_class_subsets)
-print('Finished pos class retraining.')
+same_class_train_losses, same_class_test_losses = retrain(model, same_class_subsets)
+print('Finished same class retraining.')
 
-np.savez(os.path.join(out, 'all-experiment-data'),
+np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}'.format(dataset_type, default_prop, default_num_subsets)),
         train_losses=train_losses,
         test_losses=test_losses,
         pred_infl=pred_infl,
@@ -180,7 +186,5 @@ np.savez(os.path.join(out, 'all-experiment-data'),
         pos_tail_test_losses=pos_tail_test_losses,
         same_grad_train_losses=same_grad_train_losses,
         same_grad_test_losses=same_grad_test_losses,
-        neg_class_train_losses=neg_class_train_losses,
-        neg_class_test_losses=neg_class_test_losses,
-        pos_class_train_losses=pos_class_train_losses,
-        pos_class_test_losses=pos_class_test_losses)
+        same_class_train_losses=same_class_train_losses,
+        same_class_test_losses=same_class_test_losses)
