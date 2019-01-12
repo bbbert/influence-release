@@ -42,11 +42,11 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             self.has_biases = False
                 
         if self.num_classes == 2:
-            multi_class='ovr'
+            self.multi_class='ovr'
             self.weight_shape = [self.input_dim]
             self.pseudo_num_classes = 1
         else:
-            multi_class='multinomial'
+            self.multi_class='multinomial'
             self.weight_shape = [self.input_dim * self.num_classes]
             self.pseudo_num_classes = self.num_classes
         
@@ -62,8 +62,8 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tol=1e-8,
             fit_intercept=False, 
             solver='lbfgs',
-            multi_class=multi_class,
-            warm_start=True, #True
+            multi_class=self.multi_class,
+            warm_start=True,
             max_iter=self.max_lbfgs_iter)
 
         C_minus_one = 1.0 / ((self.num_train_examples - 1) * self.weight_decay)
@@ -72,8 +72,8 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             tol=1e-8,
             fit_intercept=False, 
             solver='lbfgs',
-            multi_class=multi_class,
-            warm_start=True, #True
+            multi_class=self.multi_class,
+            warm_start=True,
             max_iter=self.max_lbfgs_iter)  
 
 
@@ -153,12 +153,12 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
 
 
 
-    def retrain(self, num_steps, feed_dict):
+    def retrain(self, num_steps, feed_dict, verbose=False):
     
         self.train_with_LBFGS(
             feed_dict=feed_dict,
             save_checkpoints=False, 
-            verbose=False)
+            verbose=verbose)
         
         # super(LogisticRegressionWithLBFGS, self).train(
         #     num_steps, 
@@ -211,11 +211,17 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             if verbose: print('Using model minus one')
             model = self.sklearn_model_minus_one
         else:
-            raise ValueError, "feed_dict has incorrect number of training examples"
+            C = 1.0 / (num_train_examples * self.weight_decay)
+            model = linear_model.LogisticRegression(
+                C=C,
+                tol=1e-8,
+                fit_intercept=False, 
+                solver='lbfgs',
+                multi_class=self.multi_class,
+                warm_start=True,
+                max_iter=self.max_lbfgs_iter)  
 
-        # print(X_train)
-        # print(Y_train)
-        model.fit(X_train, Y_train)
+        model.fit(X_train, Y_train) 
         # sklearn returns coefficients in shape num_classes x num_features
         # whereas our weights are defined as num_features x num_classes
         # so we have to tranpose them first.
