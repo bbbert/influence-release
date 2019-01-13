@@ -16,14 +16,14 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 0 # irrelevant for convex model
-dataset_type = 'processed_imageNet'
+dataset_type = 'processed_imageNet' #'hospital' 
 # hospital is binary
 # processed_imageNet is 10-class
 model_type = 'logreg_lbfgs'
 out = '../output-break-infl-logreg'
 nametag = 'break-infl-logreg'
 
-default_prop = 0.1
+default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 default_num_subsets = 30
 
 random_seed = 0
@@ -176,8 +176,7 @@ np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}'.format(da
         same_grad_subsets=same_grad_subsets,
         cluster_label=cluster_label,
         cluster_labels=cluster_labels,
-        neg_class_subsets=neg_class_subsets,
-        pos_class_subsets=pos_class_subsets,
+        same_class_subsets=same_class_subsets,
         random_train_losses=random_train_losses,
         random_test_losses=random_test_losses,
         neg_tail_train_losses=neg_tail_train_losses,
