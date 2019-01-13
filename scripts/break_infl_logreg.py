@@ -175,7 +175,7 @@ np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_see
         test_idx=test_idx,
         random_subsets=random_subsets,
         neg_tail_subsets=neg_tail_subsets,
-        pos_tail_subset=pos_tail_subsets,
+        pos_tail_subsets=pos_tail_subsets,
         same_grad_subsets=same_grad_subsets,
         cluster_label=cluster_label,
         cluster_labels=cluster_labels,
