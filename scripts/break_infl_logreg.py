@@ -16,17 +16,20 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 0 # irrelevant for convex model
-dataset_type = 'processed_imageNet' #'hospital' 
+dataset_type = 'hospital' 
 # hospital is binary
 # processed_imageNet is 10-class
 model_type = 'logreg_lbfgs'
 out = '../output-break-infl-logreg'
 nametag = 'break-infl-logreg'
 
-default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
-default_num_subsets = 30
+if dataset_type == 'processed_imageNet':
+    default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
+else:
+    default_prop = 0.1
+default_num_subsets = 100
 
-random_seed = 0
+random_seed = 2
 np.random.seed(random_seed) # intended for subset choices
 
 def get_losses(model):
@@ -164,7 +167,7 @@ print('Finished same grad retraining.')
 same_class_train_losses, same_class_test_losses = retrain(model, same_class_subsets)
 print('Finished same class retraining.')
 
-np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}'.format(dataset_type, default_prop, default_num_subsets)),
+np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_seed-{}'.format(dataset_type, default_prop, default_num_subsets, random_seed)),
         train_losses=train_losses,
         test_losses=test_losses,
         pred_infl=pred_infl,
