@@ -16,7 +16,7 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 0 # irrelevant for convex model
-dataset_type = 'hospital'#'processed_imageNet' 
+dataset_type = 'hospital' 
 # hospital is binary
 # processed_imageNet is 10-class
 model_type = 'logreg_lbfgs'
@@ -29,7 +29,7 @@ else:
     default_prop = 0.1
 default_num_subsets = 100
 
-random_seed = 5
+random_seed = 8
 np.random.seed(random_seed) # intended for subset choices
 
 def get_losses(model):
@@ -59,6 +59,7 @@ def orig_train(test_idx='max'):
         test_idx = np.random.choice(num_train_pts)
     elif test_idx == 'tails':
         argsorts = np.argsort(test_losses)
+        np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
         test_idx = np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
     pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
     print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
@@ -154,11 +155,20 @@ def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=de
 
 def get_same_features_subset(num_train_pts, features, labels, proportion=default_prop, num=default_num_subsets):
     if dataset_type == 'hospital':
-        return None
+        indices = np.where(features[:,8]==1)[0]
+        indices = np.where(features[indices,1]>5)[0]
+        indices = np.where(features[indices,22]==1)[0]
+        indices = np.where(features[indices,14]==1)[0]
+        indices = np.where(features[indices,3]>5)[0]
+        subsets = []
+        for i in range(num):
+            subsets.append(np.random.choice(indices, 4*len(indices)//5, replace=False))
+        return subsets
     elif dataset_type == 'processed_imageNet':
         return None
 
 model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train('tails')
+print('Test_idx: {}'.format(test_idx))
 num_train_pts = model.num_train_examples
 print('Finished original training.')
 
