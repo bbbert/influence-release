@@ -16,7 +16,7 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 0 # irrelevant for convex model
-dataset_type = 'hospital' 
+dataset_type = 'hospital'#'processed_imageNet' 
 # hospital is binary
 # processed_imageNet is 10-class
 model_type = 'logreg_lbfgs'
@@ -29,7 +29,7 @@ else:
     default_prop = 0.1
 default_num_subsets = 100
 
-random_seed = 2
+random_seed = 5
 np.random.seed(random_seed) # intended for subset choices
 
 def get_losses(model):
@@ -38,7 +38,7 @@ def get_losses(model):
     return train_losses, test_losses
 
 # test_idx: choose a test point to measure scalar infl against
-def orig_train(test_idx=None):
+def orig_train(test_idx='max'):
     tf.reset_default_graph()
 
     model_name = get_model_name(nametag, dataset_type, model_type, seed)
@@ -52,9 +52,14 @@ def orig_train(test_idx=None):
     train_losses, test_losses = get_losses(model)
     print('Trained original model.')
 
-    if test_idx is None:
-        test_idx = np.argmax(test_losses)
     num_train_pts = model.num_train_examples
+    if test_idx == 'max':
+        test_idx = np.argmax(test_losses)
+    elif test_idx == 'random':
+        test_idx = np.random.choice(num_train_pts)
+    elif test_idx == 'tails':
+        argsorts = np.argsort(test_losses)
+        test_idx = np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
     pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
     print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
 
@@ -74,6 +79,8 @@ def retrained_losses(model, remove_indices):
     return get_losses(model)
 
 def retrain(model, remove_subsets):
+    if remove_subsets is None:
+        return None, None
     train_losses, test_losses = [], []
     n = len(remove_subsets)
     n20 = n//20
@@ -122,7 +129,7 @@ def get_same_grad_dir(num_train_pts, grad_loss, proportion=default_prop, num=def
         subsets.append(np.random.choice(cluster_indices, points, replace=False))
     return np.array(subsets), best, labels
 
-def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=default_num_subsets):
+def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=default_num_subsets, test_label=None):
     points = int(proportion*num_train_pts)
     label_vals, counts = np.unique(labels, return_counts=True)
     valid_labels = []
@@ -137,12 +144,21 @@ def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=de
 
     subsets = []
     for i in range(num):
-        sample = np.random.choice(flat)
-        sample_ind = label_to_ind[labels[sample]]
+        if test_label is None:
+            sample = np.random.choice(flat)
+            sample_ind = label_to_ind[labels[sample]]
+        else:
+            sample_ind = int(test_label)
         subsets.append(np.random.choice(valid_indices[sample_ind], points, replace=False))
     return np.array(subsets)
 
-model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train()
+def get_same_features_subset(num_train_pts, features, labels, proportion=default_prop, num=default_num_subsets):
+    if dataset_type == 'hospital':
+        return None
+    elif dataset_type == 'processed_imageNet':
+        return None
+
+model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train('tails')
 num_train_pts = model.num_train_examples
 print('Finished original training.')
 
@@ -152,8 +168,10 @@ neg_tail_subsets, pos_tail_subsets = get_scalar_infl_tails(num_train_pts, pred_i
 print('Found scalar infl tail subsets.')
 same_grad_subsets, cluster_label, cluster_labels = get_same_grad_dir(num_train_pts, grad_loss)
 print('Found same gradient subsets.')
-same_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels)
+same_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels, test_label=model.data_sets.test.labels[test_idx])
 print('Found same class subsets.')
+same_features_subsets = get_same_features_subset(num_train_pts, model.data_sets.train.x, model.data_sets.train.labels)
+print('Found same features subsets.')
 
 random_train_losses, random_test_losses = retrain(model, random_subsets)
 print('Finished random retraining.')
@@ -166,8 +184,10 @@ same_grad_train_losses, same_grad_test_losses = retrain(model, same_grad_subsets
 print('Finished same grad retraining.')
 same_class_train_losses, same_class_test_losses = retrain(model, same_class_subsets)
 print('Finished same class retraining.')
+same_features_train_losses, same_features_test_losses = retrain(model, same_features_subsets)
+print('Finished same features retraining.')
 
-np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_seed-{}'.format(dataset_type, default_prop, default_num_subsets, random_seed)),
+np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_seed-{}-test_idx-{}'.format(dataset_type, default_prop, default_num_subsets, random_seed, test_idx)),
         train_losses=train_losses,
         test_losses=test_losses,
         pred_infl=pred_infl,
@@ -180,6 +200,7 @@ np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_see
         cluster_label=cluster_label,
         cluster_labels=cluster_labels,
         same_class_subsets=same_class_subsets,
+        same_features_subsets=same_features_subsets,
         random_train_losses=random_train_losses,
         random_test_losses=random_test_losses,
         neg_tail_train_losses=neg_tail_train_losses,
@@ -189,4 +210,6 @@ np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_see
         same_grad_train_losses=same_grad_train_losses,
         same_grad_test_losses=same_grad_test_losses,
         same_class_train_losses=same_class_train_losses,
-        same_class_test_losses=same_class_test_losses)
+        same_class_test_losses=same_class_test_losses,
+        same_features_train_losses=same_features_train_losses,
+        same_features_test_losses=same_features_test_losses)
