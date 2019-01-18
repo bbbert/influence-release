@@ -29,7 +29,7 @@ else:
     default_prop = 0.1
 default_num_subsets = 100
 
-random_seed = 8
+random_seed = 10
 np.random.seed(random_seed) # intended for subset choices
 
 def get_losses(model):
@@ -59,6 +59,7 @@ def orig_train(test_idx='max'):
         test_idx = np.random.choice(num_train_pts)
     elif test_idx == 'tails':
         argsorts = np.argsort(test_losses)
+        # This random choice thing doesn't seem to be working properly and I'm not sure why...
         np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
         test_idx = np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
     pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
@@ -155,12 +156,13 @@ def get_same_class_subset(num_train_pts, labels, proportion=default_prop, num=de
 
 def get_same_features_subset(num_train_pts, features, labels, proportion=default_prop, num=default_num_subsets):
     if dataset_type == 'hospital':
-        indices = np.where(features[:,8]==1)[0]
+        indices = np.where(features[:,9]==1)[0]
         indices = np.where(features[indices,1]>5)[0]
-        indices = np.where(features[indices,22]==1)[0]
+        indices = np.where(features[indices,26]==1)[0]
         indices = np.where(features[indices,14]==1)[0]
         indices = np.where(features[indices,3]>5)[0]
         subsets = []
+        print('Features subset has {} examples total'.format(len(indices)))
         for i in range(num):
             subsets.append(np.random.choice(indices, 4*len(indices)//5, replace=False))
         return subsets
