@@ -27,7 +27,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 
 from influence.hessians import hessian_vector_product
 from influence.dataset import DataSet
-from load_mnist import load_mnist, load_small_mnist
+from load_mnist import load_mnist, load_small_mnist, center_data
 from load_cifar10 import load_cifar10, load_small_cifar10
 from load_hospital import load_hospital
 
@@ -120,6 +120,10 @@ class GenericNeuralNet(object):
         else:
             warnings.warn('Invalid dataset')
         #print(self.data_sets.train.x.shape)
+
+        if gen_dict['center_data']:
+            self.data_sets = center_data(self.data_sets)
+            print('Centered data.')
 
         for dataset in self.data_sets:
             if dataset is not None:

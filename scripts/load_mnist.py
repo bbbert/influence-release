@@ -158,4 +158,14 @@ def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
 
   return base.Datasets(train=train, validation=validation, test=test)
 
-  
+def center_data(datasets):
+  allx = np.concatenate((datasets.train.x, datasets.test.x))
+  valid = None
+  if datasets.validation is not None:
+    allx = np.concatenate((allx, datasets.validation.x))
+  avg = np.mean(allx, axis=0)
+  if datasets.validation is not None:
+    valid = DataSet(datasets.validation.x - avg, datasets.validation.labels, 0, np.zeros(len(datasets.validation.labels),dtype=bool))
+  return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels, 0, np.zeros(len(datasets.train.labels),dtype=bool)),
+          validation=valid,
+          test=DataSet(datasets.test.x - avg, datasets.test.labels, 0, np.zeros(len(datasets.test.labels),dtype=bool)))

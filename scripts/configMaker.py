@@ -105,6 +105,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
             'batching_seed':        seed,
             'initialization_seed':  seed,
             'dataset_type':         dataset_type,
+            'center_data':          False,
             'batch_size':           batch_size,
             'initial_learning_rate':initial_learning_rate,
             'decay_epochs':         decay_epochs,
