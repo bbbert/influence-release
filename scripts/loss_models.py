@@ -46,6 +46,9 @@ class LossModel:
         return np.full(X.shape[0], s)
     
 class LogisticRegression(LossModel):
+    def __init__(self, C=1e8):
+        self.C = C
+        
     def sigmoid(self, z):
         return 1.0 / (1.0 + np.exp(-z))
     
@@ -56,7 +59,7 @@ class LogisticRegression(LossModel):
         return np.array(res.x.reshape(-1))
 
     def optimize_sklearn(self, X, y, w=None):
-        model = sklearn.linear_model.LogisticRegression(C=1e8, fit_intercept=False, solver='liblinear', tol=1e-8)
+        model = sklearn.linear_model.LogisticRegression(C=self.C, fit_intercept=False, solver='liblinear', tol=1e-8)
         model.fit(X, y, sample_weight=w)
         return np.array(model.coef_.reshape(-1))
     
