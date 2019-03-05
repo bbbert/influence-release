@@ -50,11 +50,11 @@ class LogisticRegression(LossModel):
         self.C = C
         
     def sigmoid(self, z):
-        return 1.0 / (1.0 + np.exp(-z))
+        return 1.0 / (1.0 + np.exp(z))
     
     def optimize_direct_bfgs(self, X, y):
         def objective(theta):
-            return -np.mean(np.log(sigmoid(y * np.dot(X, theta))))
+            return -np.mean(np.log(sigmoid(-y * np.dot(X, theta))))
         res = minimize(objective, np.zeros(X.shape[1]), method='BFGS', tol=1e-8)
         return np.array(res.x.reshape(-1))
 
@@ -69,17 +69,17 @@ class LogisticRegression(LossModel):
     
     def L(self, X, y, w, theta):
         y, w = self.reshape_scalar(X, y), self.reshape_scalar(X, w) # allow scalar parameters
-        sigmoids = self.sigmoid(y * np.dot(X, theta))
+        sigmoids = self.sigmoid(-y * np.dot(X, theta))
         return np.dot(w, -np.log(sigmoids))
     
     def G(self, X, y, w, theta):
         y, w = self.reshape_scalar(X, y), self.reshape_scalar(X, w) # allow scalar parameters
-        sigmoids = self.sigmoid(y * np.dot(X, theta))
-        return -(w * y * (1 - sigmoids))[:, np.newaxis] * X
+        sigmoids = self.sigmoid(-y * np.dot(X, theta))
+        return -(w * y * sigmoids)[:, np.newaxis] * X
     
     def H(self, X, y, w, theta):
         y, w = self.reshape_scalar(X, y), self.reshape_scalar(X, w) # allow scalar parameters
-        sigmoids = self.sigmoid(y * np.dot(X, theta))
+        sigmoids = self.sigmoid(-y * np.dot(X, theta))
         # note: no averaging!
         return np.dot(X.T * (w * sigmoids * (1 - sigmoids)), X)
     
