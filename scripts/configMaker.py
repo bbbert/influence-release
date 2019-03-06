@@ -99,7 +99,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         input_dim = 2048
     elif dataset_type in ['hospital']:
         num_classes = 2
-        input_dim = 127
+        input_dim = 127 + 1 # add bias term
     elif dataset_type in ['spam']:
         num_classes = 2
         input_dim = 100#
