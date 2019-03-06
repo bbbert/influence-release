@@ -6,7 +6,6 @@ import copy, warnings
 class DataSet(object):
 
     def reset_rng(self):
-        print("Reset attempted")
         self._rng.seed(self._randomState)
         self.reset_indices('normal')
 

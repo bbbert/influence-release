@@ -34,6 +34,48 @@ def get_losses(model):
     test_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_test_feed_dict)
     return train_losses, test_losses
 
+def get_cross_validated_weight_decay(initial_config_dict,
+                                     min_weight_decay=0.0001,
+                                     max_weight_decay=0.01,
+                                     weight_decay_samples=5,
+                                     num_folds=10):
+    config_dict = initial_config_dict.copy()
+    config_dict['spec'] = config_dict['spec'].copy()
+
+    weight_decays = np.logspace(np.log10(min_weight_decay),
+                                np.log10(max_weight_decay), weight_decay_samples)
+    cv_errors = np.zeros(weight_decay_samples)
+    for i, weight_decay in enumerate(weight_decays):
+        config_dict['spec']['weight_decay'] = weight_decay
+        model = LogisticRegressionWithLBFGS(config_dict)
+
+        num_train_pts = model.num_train_examples
+        fold_size = (num_train_pts + num_folds - 1) // num_folds
+        cv_error = 0.0
+        for k in range(num_folds):
+            fold_begin, fold_end = k * num_folds, min(num_train_pts, (k + 1) * num_folds)
+            fold_train_indices = np.concatenate((np.arange(0, fold_begin), np.arange(fold_end, num_train_pts)))
+
+            model.all_train_feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, fold_train_indices)
+            model.train()
+            fold_feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, np.arange(fold_begin, fold_end))
+            fold_loss = model.sess.run(model.loss_no_reg, feed_dict=fold_feed_dict)
+            cv_error += fold_loss
+
+        cv_errors[i] = cv_error
+        print('Cross-validation error is {} for weight_decay={}.'.format(cv_error, weight_decay))
+
+        model.sess.close()
+        tf.reset_default_graph()
+
+    best_i = np.argmin(cv_errors)
+    best_weight_decay = weight_decays[best_i]
+    print('Cross-validation errors: {}'.format(cv_errors))
+    print('Selecting weight_decay {}, with error {}.'.format(best_weight_decay, cv_errors[best_i]))
+    print('Cross-validation complete.')
+
+    return best_weight_decay
+
 # test_idx: choose a test point to measure scalar infl against
 def initial_training():
     tf.reset_default_graph()
@@ -42,8 +84,11 @@ def initial_training():
     config_dict = make_config(seed, dataset_type, model_type, out, nametag=nametag, test_idx=0)
     # For some reason, it takes 100 iter, which is the default param.
     # When I change it to max_iter of 20, it takes 20 iter. Is this a bug?
-    config_dict['spec']['max_lbfgs_iter'] = 400
+    config_dict['spec']['max_lbfgs_iter'] = 1024
     config_dict['gen']['center_data'] = center_data
+
+    weight_decay = get_cross_validated_weight_decay(config_dict)
+    config_dict['spec']['weight_decay'] = weight_decay
     model = LogisticRegressionWithLBFGS(config_dict)
 
     model.train()
