@@ -38,7 +38,7 @@ def get_cross_validated_weight_decay(initial_config_dict,
                                      min_weight_decay=0.0001,
                                      max_weight_decay=0.01,
                                      weight_decay_samples=5,
-                                     num_folds=10):
+                                     num_folds=5):
     config_dict = initial_config_dict.copy()
     config_dict['spec'] = config_dict['spec'].copy()
 
