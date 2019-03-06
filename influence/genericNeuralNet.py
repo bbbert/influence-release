@@ -877,7 +877,7 @@ class GenericNeuralNet(object):
         if margins:
             dataset = self.data_sets.train if test_indices_from_train else self.data_sets.test
             y = (dataset.labels[test_indices] == 1) * 2 - 1
-            test_grad_loss_no_reg_val = np.mean(-y * dataset.x[test_indices], axis=0)
+            test_grad_loss_no_reg_val = np.mean(-dataset.x[test_indices].T * y, axis=1)
             test_grad_loss_no_reg_val = self.vec_to_list(test_grad_loss_no_reg_val)
             #test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
         else:
