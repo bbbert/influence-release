@@ -1,0 +1,9 @@
+*.py[cob]
+__pycache__/
+data/
+output/
+configs/
+*.swp
+*.txt
+.ipynb_checkpoints/
+*.png
