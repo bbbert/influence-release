@@ -62,19 +62,19 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     elif model_type == 'logreg_lbfgs':
         if dataset_type in ['mnist', 'mnist_small']:
             max_lbfgs_iter = 100
-            has_biases = True#False
+            has_biases = False
         elif dataset_type in ['cifar10', 'cifar10_small']:
             max_lbfgs_iter = 400
-            has_biases = True
+            has_biases = False
         elif dataset_type in ['processed_imageNet']:
             max_lbfgs_iter = 100
-            has_biases = True#False
+            has_biases = False
         elif dataset_type in ['hospital']:
             max_lbfgs_iter = 100
-            has_biases = True#False
+            has_biases = False
         elif dataset_type in ['spam']:
             max_lbfgs_iter = 100
-            has_biases = True#False
+            has_biases = False
         else:
             print('Error: unknown default params for logreg_lbfgs on this dataset')
         weight_decay = 0.01
@@ -99,10 +99,17 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         input_dim = 2048
     elif dataset_type in ['hospital']:
         num_classes = 2
-        input_dim = 127 + 1 # add bias term
+        input_dim = 127
     elif dataset_type in ['spam']:
         num_classes = 2
         input_dim = 100#
+
+    append_biases = False
+    if model_type == 'logreg_lbfgs':
+        append_biases = True
+
+    if append_biases:
+        input_dim += 1
 
     #genericNN
     gen_dict = {
@@ -111,6 +118,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
             'batching_seed':        seed,
             'initialization_seed':  seed,
             'dataset_type':         dataset_type,
+            'append_biases':        append_biases,
             'center_data':          False,
             'batch_size':           batch_size,
             'initial_learning_rate':initial_learning_rate,

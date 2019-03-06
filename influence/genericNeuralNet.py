@@ -117,13 +117,6 @@ class GenericNeuralNet(object):
             print('LOADED PROCESSED IMAGENET')
         elif self.dataset_type == 'hospital':
             self.data_sets = load_hospital()
-
-            def add_bias(A):
-                return np.hstack((A, np.ones((A.shape[0], 1))))
-
-            self.data_sets.train._x = add_bias(self.data_sets.train._x)
-            self.data_sets.test._x = add_bias(self.data_sets.test._x)
-
             print('LOADED HOSPITAL')
         elif self.dataset_type == 'spam':
             self.data_sets = load_spam()
@@ -134,6 +127,17 @@ class GenericNeuralNet(object):
         if gen_dict['center_data']:
             self.data_sets = center_data(self.data_sets)
             print('Centered data.')
+
+        if gen_dict['append_biases']:
+            def add_bias(A):
+                return np.hstack((A, np.ones((A.shape[0], 1))))
+
+            if self.data_sets.train is not None:
+                self.data_sets.train._x = add_bias(self.data_sets.train._x)
+            if self.data_sets.test is not None:
+                self.data_sets.test._x = add_bias(self.data_sets.test._x)
+            if self.data_sets.validation is not None:
+                self.data_sets.validation._x = add_bias(self.data_sets.validation._x)
 
         for dataset in self.data_sets:
             if dataset is not None:
