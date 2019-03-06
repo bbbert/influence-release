@@ -829,7 +829,9 @@ class GenericNeuralNet(object):
             if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
         if margins:
-            test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
+            y = (self.data_sets.test.labels[test_indices] == 1) * 2 - 1
+            test_grad_loss_no_reg_val = -y * self.data_sets.test.x[test_indices]
+            #test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
         else:
             test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
 
