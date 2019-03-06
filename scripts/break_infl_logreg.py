@@ -15,8 +15,10 @@ from sklearn.cluster import KMeans
 from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
+import time
+
 seed = 0 # irrelevant for convex model
-dataset_type = 'hospital'
+dataset_type = 'spam'#'hospital'
 center_data = False
 # hospital is binary
 # processed_imageNet is 10-class
@@ -24,16 +26,28 @@ model_type = 'logreg_lbfgs'
 out = '../output-break-infl-logreg'
 nametag = 'break-infl-logreg'
 
+margins = False#True
+if margins:
+    nametag += '-margins'
+test_label = 0
+
 if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
 default_num_subsets = 100
 
-random_seed = 13
-np.random.seed(random_seed) # intended for subset choices
+#random_seed = 0
+#np.random.seed(random_seed) # intended for subset choices
 
 def get_losses(model):
+    if margins:
+        train_margins = model.sess.run(model.logits, feed_dict=model.all_train_feed_dict)
+        test_margins = model.sess.run(model.logits, feed_dict=model.all_test_feed_dict)
+        train_margins, test_margins = train_margins[:,1], test_margins[:,1]
+        if test_label == 0:
+            train_margins, test_margins = -train_margins, -test_margins
+        return train_margins, test_margins
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
     test_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_test_feed_dict)
     return train_losses, test_losses
@@ -63,8 +77,11 @@ def orig_train(test_idx='max'):
         argsorts = np.argsort(test_losses)
         # This random choice thing doesn't seem to be working properly and I'm not sure why...
         test_idx = np.random.choice(np.concatenate((argsorts[:num_train_pts//20],argsorts[-(num_train_pts//20):])))
-    pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
+    start = time.time()
+    pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', margins=margins)
+    print('Predicted infl calc time: {}'.format(time.time() - start))
     print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
+    print('Test label: {}'.format(model.data_sets.test.labels[test_idx]))
 
     grad_loss = []
     for point in range(num_train_pts):
@@ -167,7 +184,7 @@ def get_same_features_subset(num_train_pts, features, labels, proportion=default
         subsets = []
         print('Features subset has {} examples total'.format(len(indices)))
         for i in range(num):
-            subsets.append(np.random.choice(indices, 4*len(indices)//5, replace=False))
+            subsets.append(np.random.choice(indices, len(indices)//5, replace=False))
         return subsets
     else:
         return None
@@ -183,40 +200,43 @@ def get_mixed_subset(num_train_pts, subsets1, subsets2, proportion=default_prop,
             np.random.choice(subsets2, points-count, replace=False)))))
     return subsets
 
-model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train(66678)#orig_train('tails')
-print('Test_idx: {}'.format(test_idx))
-num_train_pts = model.num_train_examples
-print('Finished original training.')
+def run_experiment(random_seed):
+    np.random.seed(random_seed)
 
-random_subsets = get_random_subset(num_train_pts)
-print('Found random subsets.')
-neg_tail_subsets, pos_tail_subsets = get_scalar_infl_tails(num_train_pts, pred_infl)
-print('Found scalar infl tail subsets.')
-same_grad_subsets, cluster_label, cluster_labels = get_same_grad_dir(num_train_pts, grad_loss)
-print('Found same gradient subsets.')
-same_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels, test_label=model.data_sets.test.labels[test_idx])
-print('Found same class subsets.')
-same_features_subsets = get_same_features_subset(num_train_pts, model.data_sets.train.x, model.data_sets.train.labels)
-print('Found same features subsets.')
-mixed_subsets = get_mixed_subset(num_train_pts, neg_tail_subsets, same_grad_subsets, num=4*default_num_subsets)
-print('Found mixed subsets.')
+    model_name, config_dict, model, train_losses, test_losses, pred_infl, grad_loss, test_idx = orig_train('tails')
+    print('Test_idx: {}'.format(test_idx))
+    num_train_pts = model.num_train_examples
+    print('Finished original training.')
 
-random_train_losses, random_test_losses = None, None#retrain(model, random_subsets)
-print('Finished random retraining.')
-neg_tail_train_losses, neg_tail_test_losses = None, None#retrain(model, neg_tail_subsets)
-print('Finished neg tails retraining.')
-pos_tail_train_losses, pos_tail_test_losses = None, None#retrain(model, pos_tail_subsets)
-print('Finished pos tails retraining.')
-same_grad_train_losses, same_grad_test_losses = None, None#retrain(model, same_grad_subsets)
-print('Finished same grad retraining.')
-same_class_train_losses, same_class_test_losses = None, None#retrain(model, same_class_subsets)
-print('Finished same class retraining.')
-same_features_train_losses, same_features_test_losses = None, None#retrain(model, same_features_subsets)
-print('Finished same features retraining.')
-mixed_train_losses, mixed_test_losses = retrain(model, mixed_subsets)
-print('Finished mixed subsets retraining.')
+    random_subsets = get_random_subset(num_train_pts)
+    print('Found random subsets.')
+    neg_tail_subsets, pos_tail_subsets = get_scalar_infl_tails(num_train_pts, pred_infl)
+    print('Found scalar infl tail subsets.')
+    same_grad_subsets, cluster_label, cluster_labels = get_same_grad_dir(num_train_pts, grad_loss)
+    print('Found same gradient subsets.')
+    same_class_subsets = get_same_class_subset(num_train_pts, model.data_sets.train.labels, test_label=model.data_sets.test.labels[test_idx])
+    print('Found same class subsets.')
+    same_features_subsets = get_same_features_subset(num_train_pts, model.data_sets.train.x, model.data_sets.train.labels)
+    print('Found same features subsets.')
+    mixed_subsets = get_mixed_subset(num_train_pts, neg_tail_subsets, same_grad_subsets, num=default_num_subsets)
+    print('Found mixed subsets.')
 
-np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_seed-{}-test_idx-{}-center-data-{}'.format(dataset_type, default_prop, default_num_subsets, random_seed, test_idx, center_data)),
+    random_train_losses, random_test_losses = retrain(model, random_subsets)
+    print('Finished random retraining.')
+    neg_tail_train_losses, neg_tail_test_losses = retrain(model, neg_tail_subsets)
+    print('Finished neg tails retraining.')
+    pos_tail_train_losses, pos_tail_test_losses = retrain(model, pos_tail_subsets)
+    print('Finished pos tails retraining.')
+    same_grad_train_losses, same_grad_test_losses = retrain(model, same_grad_subsets)
+    print('Finished same grad retraining.')
+    same_class_train_losses, same_class_test_losses = retrain(model, same_class_subsets)
+    print('Finished same class retraining.')
+    same_features_train_losses, same_features_test_losses = retrain(model, same_features_subsets)
+    print('Finished same features retraining.')
+    mixed_train_losses, mixed_test_losses = retrain(model, mixed_subsets)
+    print('Finished mixed subsets retraining.')
+
+    np.savez(os.path.join(out, 'all-experiment-data-{}-margins-{}-prop-{}-subsets-{}-random_seed-{}-test_idx-{}-center-data-{}'.format(dataset_type, margins, default_prop, default_num_subsets, random_seed, test_idx, center_data)),
         train_losses=train_losses,
         test_losses=test_losses,
         pred_infl=pred_infl,
@@ -246,3 +266,5 @@ np.savez(os.path.join(out, 'all-experiment-data-{}-prop-{}-subsets-{}-random_see
         mixed_train_losses=mixed_train_losses,
         mixed_test_losses=mixed_test_losses)
 
+for i in range(25,26):
+    run_experiment(i)

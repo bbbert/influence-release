@@ -72,8 +72,10 @@ def load_spam(n = None):
     X_valid = X_valid.toarray()
     X_test = X_test.toarray()
 
-    train = DataSet(X_train, Y_train)
-    validation = DataSet(X_valid, Y_valid)
-    test = DataSet(X_test, Y_test)
+    print(np.array(X_train).shape)
+
+    train = DataSet(X_train, Y_train, 0, np.zeros(len(X_train), dtype=bool))
+    validation = DataSet(X_valid, Y_valid, 0, np.zeros(len(X_valid), dtype=bool))
+    test = DataSet(X_test, Y_test, 0, np.zeros(len(X_test), dtype=bool))
 
     return base.Datasets(train=train, validation=validation, test=test)
