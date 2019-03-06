@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import os, warnings
 import cPickle as pickle
 
-valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small', 'processed_imageNet', 'hospital']
+valid_datasets = ['mnist', 'mnist_small', 'cifar10', 'cifar10_small', 'processed_imageNet', 'hospital', 'spam']
 valid_models = ['all_cnn_c_hidden', 'logreg_lbfgs']
 
 def load_config(model_name):
@@ -62,18 +62,21 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     elif model_type == 'logreg_lbfgs':
         if dataset_type in ['mnist', 'mnist_small']:
             max_lbfgs_iter = 100
-            has_biases = False
+            has_biases = True#False
         elif dataset_type in ['cifar10', 'cifar10_small']:
             max_lbfgs_iter = 400
             has_biases = True
         elif dataset_type in ['processed_imageNet']:
             max_lbfgs_iter = 100
-            has_biases = False
+            has_biases = True#False
         elif dataset_type in ['hospital']:
             max_lbfgs_iter = 100
-            has_biases = False
+            has_biases = True#False
+        elif dataset_type in ['spam']:
+            max_lbfgs_iter = 100
+            has_biases = True#False
         else:
-            print('error: unknown default params for logreg_lbfgs on this dataset')
+            print('Error: unknown default params for logreg_lbfgs on this dataset')
         weight_decay = 0.01
         damping = 0.0
         decay_epochs = [1000,10000]
@@ -97,6 +100,9 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     elif dataset_type in ['hospital']:
         num_classes = 2
         input_dim = 127
+    elif dataset_type in ['spam']:
+        num_classes = 2
+        input_dim = 100#
 
     #genericNN
     gen_dict = {

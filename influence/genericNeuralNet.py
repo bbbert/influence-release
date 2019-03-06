@@ -30,6 +30,7 @@ from influence.dataset import DataSet
 from load_mnist import load_mnist, load_small_mnist, center_data
 from load_cifar10 import load_cifar10, load_small_cifar10
 from load_hospital import load_hospital
+from load_spam import load_spam
 
 
 def variable(name, shape, initializer):
@@ -117,6 +118,8 @@ class GenericNeuralNet(object):
         elif self.dataset_type == 'hospital':
             self.data_sets = load_hospital()
             print('LOADED HOSPITAL')
+        elif self.dataset_type == 'spam':
+            self.data_sets = load_spam()
         else:
             warnings.warn('Invalid dataset')
         #print(self.data_sets.train.x.shape)
@@ -240,9 +243,9 @@ class GenericNeuralNet(object):
         self.sess.run(init)
 
         self.vec_to_list = self.get_vec_to_list_fn()
-        self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
-        if self.adversarial_loss is not None:
-            self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
+        #self.adversarial_loss, self.indiv_adversarial_loss = self.adversarial_loss(self.logits, self.labels_placeholder)
+        #if self.adversarial_loss is not None:
+        #    self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
 
 
     def get_vec_to_list_fn(self):
@@ -809,6 +812,7 @@ class GenericNeuralNet(object):
     def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size,
         approx_type='cg', approx_params=None, test_description=None,
         loss_type='normal_loss',
+        margins=False,
         X=None, Y=None):
         
         if batch_size == 'default':
@@ -824,7 +828,10 @@ class GenericNeuralNet(object):
         else:
             if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
-        test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
+        if margins:
+            test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
+        else:
+            test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
 
         print('Norm of test gradient: %s' % np.linalg.norm(np.concatenate(test_grad_loss_no_reg_val)))
 

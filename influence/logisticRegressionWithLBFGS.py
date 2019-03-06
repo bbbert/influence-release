@@ -114,7 +114,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             else:
                 biases = variable(
                     'biases',
-                    [self.num_classes],
+                    [self.pseudo_num_classes],
                     tf.constant_initializer(0.0))
                 logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.pseudo_num_classes])) + biases
 
@@ -146,7 +146,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         else:
             self.b_placeholder = tf.placeholder(
                  tf.float32,
-                shape=[self.num_classes],
+                shape=[self.pseudo_num_classes],
                 name='b_placeholder')
             set_biases = tf.assign(self.biases, self.b_placeholder, validate_shape=True)
             return [set_weights, set_biases]
@@ -226,13 +226,11 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         # whereas our weights are defined as num_features x num_classes
         # so we have to tranpose them first.
         W = np.reshape(model.coef_.T, -1)
-
-        if self.has_biases:
-            b = model.intercept_
-            params_feed_dict[self.b_placeholder] = b
         
         params_feed_dict = {}
         params_feed_dict[self.W_placeholder] = W
+        if self.has_biases:
+            params_feed_dict[self.b_placeholder] = model.intercept_
         self.sess.run(self.set_params_op, feed_dict=params_feed_dict)
         if save_checkpoints: self.saver.save(self.sess, self.checkpoint_file, global_step=0)
 
