@@ -51,6 +51,13 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             self.pseudo_num_classes = self.num_classes
         
         super(LogisticRegressionWithLBFGS, self).__init__(config_dict)
+
+        if self.num_classes == 2:
+            # margin formulation only for binary logistic regression
+            y = tf.subtract(tf.multiply(tf.cast(self.labels_placeholder, tf.float32), 2), 1)
+            self.margins = tf.multiply(y, self.logits[:, 1])
+        else:
+            self.margins = None
         
         self.set_params_op = self.set_params()
         # self.hessians_op = hessians(self.total_loss, self.params)        

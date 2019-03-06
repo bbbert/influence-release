@@ -820,11 +820,46 @@ class GenericNeuralNet(object):
         return test_grad_loss_no_reg_val
 
 
+    def get_train_grad_loss_no_reg_val(self, train_indices, batch_size, loss_type='normal_loss'):
+
+        if loss_type == 'normal_loss':
+            op = self.grad_loss_no_reg_op
+        elif loss_type == 'adversarial_loss':
+            op = self.grad_adversarial_loss_op
+        else:
+            raise ValueError('Loss must be specified')
+
+        if train_indices is not None:
+            num_iter = int(np.ceil(len(train_indices) / batch_size))
+
+            train_grad_loss_no_reg_val = None
+            for i in range(num_iter):
+                start = i * batch_size
+                end = int(min((i+1) * batch_size, len(train_indices)))
+
+                train_feed_dict = self.fill_feed_dict_with_some_ex(self.data_sets.train, train_indices[start:end])
+
+                temp = self.sess.run(op, feed_dict=train_feed_dict)
+
+                if train_grad_loss_no_reg_val is None:
+                    train_grad_loss_no_reg_val = [a * (end-start) for a in temp]
+                else:
+                    train_grad_loss_no_reg_val = [a + b * (end-start) for (a, b) in zip(train_grad_loss_no_reg_val, temp)]
+
+            train_grad_loss_no_reg_val = [a/len(train_indices) for a in train_grad_loss_no_reg_val]
+
+        else:
+            train_grad_loss_no_reg_val = self.minibatch_mean_eval([op], self.data_sets.train)[0]
+        
+        return train_grad_loss_no_reg_val
+
+
     def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size,
         approx_type='cg', approx_params=None, test_description=None,
         loss_type='normal_loss',
         margins=False,
-        X=None, Y=None):
+        X=None, Y=None,
+        test_indices_from_train=False):
         
         if batch_size == 'default':
             batch_size = self.test_grad_batch_size
@@ -840,11 +875,15 @@ class GenericNeuralNet(object):
             if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
         if margins:
-            y = (self.data_sets.test.labels[test_indices] == 1) * 2 - 1
-            test_grad_loss_no_reg_val = -y * self.data_sets.test.x[test_indices]
+            dataset = self.data_sets.train if test_indices_from_train else self.data_sets.test
+            y = (dataset.labels[test_indices] == 1) * 2 - 1
+            test_grad_loss_no_reg_val = np.mean(-y * dataset.x[test_indices], axis=0)
             #test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
         else:
-            test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
+            if test_indices_from_train:
+                test_grad_loss_no_reg_val = self.get_train_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
+            else:
+                test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
 
         print('Norm of test gradient: %s' % np.linalg.norm(np.concatenate(test_grad_loss_no_reg_val)))
 
@@ -869,8 +908,6 @@ class GenericNeuralNet(object):
 
         duration = time.time() - start_time
         print('Inverse HVP took %s sec' % duration)
-
-
 
         start_time = time.time()
         if train_idx is None:

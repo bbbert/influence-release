@@ -34,6 +34,11 @@ def get_losses(model):
     test_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_test_feed_dict)
     return train_losses, test_losses
 
+def get_margins(model):
+    train_margins = model.sess.run(model.margins, feed_dict=model.all_train_feed_dict)
+    test_margins = model.sess.run(model.margins, feed_dict=model.all_test_feed_dict)
+    return train_margins, test_margins
+
 def get_cross_validated_weight_decay(initial_config_dict,
                                      min_weight_decay=0.0001,
                                      max_weight_decay=0.01,
@@ -93,6 +98,9 @@ def initial_training():
 
     model.train()
     train_losses, test_losses = get_losses(model)
+    train_margins, test_margins = None, None
+    if config_dict['gen']['num_classes'] == 2:
+        train_margins, test_margins = get_margins(model)
     print('Trained original model.')
 
     grad_loss = []
@@ -101,7 +109,7 @@ def initial_training():
     grad_loss = np.array(grad_loss)
     print('Calculated training gradients for all training points.')
 
-    return model_name, config_dict, model, train_losses, test_losses, grad_loss
+    return model_name, config_dict, model, train_losses, test_losses, train_margins, test_margins, grad_loss
 
 def pick_test_points(test_losses):
     argsort = np.argsort(test_losses)
@@ -119,12 +127,15 @@ def get_fixed_test_influence(model, test_points):
 
     num_train_pts = model.num_train_examples
     fixed_test_pred_infl = []
+    fixed_test_pred_margin_infl = []
     for test_idx in test_points:
         pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
-        print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
+        pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', margins=True)
         fixed_test_pred_infl.append(pred_infl)
+        fixed_test_pred_margin_infl.append(pred_margin_infl)
+        print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
 
-    return fixed_test_pred_infl
+    return fixed_test_pred_infl, fixed_test_pred_margin_infl
 
 def retrained_losses(model, remove_indices):
     num_train_pts = model.num_train_examples
@@ -137,7 +148,9 @@ def retrain(model, remove_subsets, remove_tags):
     if remove_subsets is None:
         return None, None
     train_losses, test_losses = [], []
-    self_infls = []
+    train_margins, test_margins = [], []
+    self_pred_infls = []
+    self_pred_margin_infls = []
     n = len(remove_subsets)
     n_report = max(n // 100, 1)
 
@@ -147,11 +160,22 @@ def retrain(model, remove_subsets, remove_tags):
             print('Retraining model {} out of {} (tag={})'.format(i, n, remove_tags[i]))
 
         train_loss, test_loss = retrained_losses(model, remove_indices)
-        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
-                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]))
         train_losses.append(train_loss)
         test_losses.append(test_loss)
-        self_infls.append(np.sum(pred_infls))
+        if model.num_classes == 2:
+            train_margin, test_margin = get_margins(model)
+            train_margins.append(train_margin)
+            test_margins.append(test_margin)
+        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
+                                                      test_indices_from_train=True, # remove_indices refers to training points
+                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]))
+        self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
+        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
+                                                             test_indices_from_train=True, # remove_indices refers to training points
+                                                             margins=True,
+                                                             test_description='subset-{}-{}'.format(i, remove_tags[i]))
+        self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
+        # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
 
         if (i % n_report == 0):
             cur_time = time.time()
@@ -159,7 +183,10 @@ def retrain(model, remove_subsets, remove_tags):
             remaining_time = time_per_retrain * (n - i- 1)
             print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
 
-    return np.array(train_losses), np.array(test_losses), np.array(self_infls)
+    train_margins = np.array(train_margins) if model.num_classes == 2 else None
+    test_margins = np.array(test_margins) if model.num_classes == 2 else None
+
+    return np.array(train_losses), np.array(test_losses), train_margins, test_margins, np.array(self_pred_infls), np.array(self_pred_margin_infls)
 
 def get_random_subset(subset_picker_rng, num_train_pts, proportion=default_prop, num=default_num_subsets):
     subsets = []
@@ -239,7 +266,9 @@ def get_same_features_subset(subset_picker_rng, num_train_pts, features, labels,
         print("Warning: unimplemented method to get subsets with the same features")
         return None
 
-model_name, config_dict, model, train_losses, test_losses, grad_loss = initial_training()
+initial_training_result = initial_training()
+model_name, config_dict, model = initial_training_result[:3]
+train_losses, test_losses, train_margins, test_margins, grad_loss = initial_training_result[3:]
 print('Finished original training.')
 
 #test_points = pick_test_points(test_losses)
@@ -247,7 +276,7 @@ if dataset_type == "hospital":
     test_points = [2267, 54826, 66678, 41567, 485, 25286]
 
 print('Test points: {}'.format(test_points))
-fixed_test_pred_infl = get_fixed_test_influence(model, test_points[:1])
+fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points)
 
 subset_seed = 13
 subset_picker_rng = np.random.RandomState(subset_seed)
@@ -281,7 +310,9 @@ print('Found same gradient subsets.')
 
 subset_tags = [tag for tag, subset in tagged_subsets]
 subset_indices = [subset for tag, subset in tagged_subsets]
-subset_train_losses, subset_test_losses, subset_self_influences = retrain(model, subset_indices, subset_tags)
+retrain_result = retrain(model, subset_indices, subset_tags)
+subset_train_losses, subset_test_losses, subset_train_margins, subset_test_margins = retrain_result[:4]
+subset_self_pred_infl, subset_self_pred_margin_infl = retrain_result[4:]
 print('Finished retraining subsets')
 
 # N = num_train_pt
@@ -292,11 +323,17 @@ name_args = (dataset_type, default_prop, default_num_subsets, subset_seed, cente
 np.savez(os.path.join(out, name_template.format(*name_args)),
          initial_train_losses=train_losses,                             # (N,)
          initial_test_losses=test_losses,                               # (N,)
+         initial_train_margins=train_margins,                           # (N,) or None
+         initial_test_margins=test_margins,                             # (N,) or None
          grad_loss=grad_loss,                                           # (N, D)
          test_points=test_points,                                       # (6,)
          fixed_test_pred_infl=fixed_test_pred_infl,                     # (6, N)
+         fixed_test_pred_margin_infl=fixed_test_pred_margin_infl,       # (6, N)
          subset_tags=subset_tags,                                       # (K,) strings
          subset_indices=subset_indices,                                 # (K,)
          subset_train_losses=subset_train_losses,                       # (K, N)
          subset_test_losses=subset_test_losses,                         # (K, N)
-         subset_self_influences=subset_self_influences)                 # (K,)
+         subset_train_margins=subset_train_margins,                     # (K, N) or None
+         subset_test_margins=subset_test_margins,                       # (K, N) or None
+         subset_self_pred_infl=subset_self_pred_infl,                   # (K,)
+         subset_self_pred_margin_infl=subset_self_pred_margin_infl)     # (K,)
