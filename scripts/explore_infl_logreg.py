@@ -15,7 +15,7 @@ from sklearn.cluster import KMeans
 from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
-seed = 0
+seed = 7
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
 dataset_type = 'hospital' # hospital is binary
 center_data = False
@@ -27,7 +27,7 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 100
+default_num_subsets = 6
 
 def get_losses(model):
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
