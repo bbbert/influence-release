@@ -18,8 +18,8 @@ from configMaker import make_config, get_model_name
 seed = 10
 subset_seed = 0
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
-#dataset_type = 'hospital' # hospital is binary
-dataset_type = 'mnist_small'
+dataset_type = 'hospital' # hospital is binary
+#dataset_type = 'mnist_small'
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -29,7 +29,7 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 30
+default_num_subsets = 100
 
 use_hessian_lu = True
 
@@ -122,14 +122,29 @@ def pick_test_points(test_losses):
 def get_fixed_test_influence(model, test_points):
     # Get predicted influences on a set of fixed test points
 
+    approx_type = 'exact' if use_hessian_lu else 'cg'
     num_train_pts = model.num_train_examples
     fixed_test_pred_infl = []
     fixed_test_pred_margin_infl = []
     for test_idx in test_points:
-        pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', use_hessian_lu=use_hessian_lu)
+        test_grad_loss = np.concatenate(model.get_test_grad_loss_no_reg_val([test_idx]))
+        test_grad_loss_H_inv = np.concatenate(model.get_inverse_hvp([test_grad_loss], approx_type=approx_type)) / model.num_train_examples
+
+        test_grad_margin, test_grad_margin_H_inv = None, None
+        if model.num_classes == 2:
+            test_grad_margin = np.concatenate(model.get_grad_margin(model.data_sets.test, [test_idx])) 
+            test_grad_margin_H_inv = np.concatenate(model.get_inverse_hvp([test_grad_margin], approx_type=approx_type)) / model.num_train_examples
+
+        pred_infl = []
+        pred_margin_infl = []
+        for train_idx in range(model.num_train_examples):
+            train_grad_loss = np.concatenate(model.get_grad_loss_no_reg_val(model.data_sets.train, [train_idx]))
+            pred_infl.append(np.dot(test_grad_loss_H_inv, train_grad_loss))
+            if model.num_classes == 2:
+                pred_margin_infl.append(np.dot(test_grad_margin_H_inv, train_grad_loss))
+
         fixed_test_pred_infl.append(pred_infl)
         if model.num_classes == 2:
-            pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
             fixed_test_pred_margin_infl.append(pred_margin_infl)
         print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
 
@@ -154,21 +169,20 @@ def retrain(model, remove_subsets, remove_tags):
     start_time = time.time()
     self_pred_infls = []
     self_pred_margin_infls = []
+    approx_type = 'exact' if use_hessian_lu else 'cg'
     for i, remove_indices in enumerate(remove_subsets):
         if (i % n_report == 0):
             print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, remove_tags[i]))
 
-        # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
-        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
-                                                      test_indices_from_train=True, # remove_indices refers to training points
-                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
-        self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
+        grad_loss = np.concatenate(model.get_grad_loss_no_reg_val(model.data_sets.train, remove_indices)) * len(remove_indices)
+        H_inv_grad_loss = np.concatenate(model.get_inverse_hvp([grad_loss], approx_type=approx_type))
+        pred_infl = np.dot(grad_loss, H_inv_grad_loss) / model.num_train_examples
+        self_pred_infls.append(pred_infl)
+
         if model.num_classes == 2:
-            pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
-                                                                 test_indices_from_train=True, # remove_indices refers to training points
-                                                                 margins=True, use_hessian_lu=use_hessian_lu,
-                                                                 test_description='subset-{}-{}'.format(i, remove_tags[i]))
-            self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
+            grad_margin = np.concatenate(model.get_grad_margin(model.data_sets.train, remove_indices)) * len(remove_indices)
+            pred_margin_infl = np.dot(grad_margin, H_inv_grad_loss) / model.num_train_examples
+            self_pred_margin_infls.append(pred_margin_infl)
 
         if (i % n_report == 0):
             cur_time = time.time()

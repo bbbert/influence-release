@@ -642,14 +642,19 @@ class GenericNeuralNet(object):
 
 
     def get_inverse_hvp(self, v, approx_type='cg', approx_params=None, verbose=True):
-        assert approx_type in ['cg', 'lissa']
+        assert approx_type in ['cg', 'lissa', 'exact']
         if approx_type == 'lissa':
             if approx_params is None:
                 approx_params = self.lissa_params
             return self.get_inverse_hvp_lissa(v, **approx_params)
         elif approx_type == 'cg':
             return self.get_inverse_hvp_cg(v, verbose=verbose, **self.fmin_ncg_params)
-
+        elif approx_type == 'exact':
+            # Note: this works only when there is a single tensor fo the weights. For neural nets, we would have to change
+            # how we compute the hessian
+            hessian = self.sess.run(self.hessian_total_loss_op, feed_dict=self.all_train_feed_dict)[0]
+            inverse_hvp = np.transpose(slin.lu_solve(slin.lu_factor(hessian), np.concatenate(v)))
+            return self.vec_to_list(inverse_hvp)
 
     def get_inverse_hvp_lissa(self, v, batch_size, scale, damping, num_samples, recursion_depth):
         """
@@ -788,84 +793,54 @@ class GenericNeuralNet(object):
 
         return self.vec_to_list(fmin_results)
 
-    def get_test_grad_loss_no_reg_val(self, test_indices, batch_size, loss_type='normal_loss'):
+    def get_test_grad_loss_no_reg_val(self, test_indices, batch_size=None, loss_type='normal_loss'):
+        return self.get_grad_loss_no_reg_val(self.data_sets.test, test_indices, batch_size, loss_type)
 
-        if loss_type == 'normal_loss':
-            op = self.grad_loss_no_reg_op
-        elif loss_type == 'adversarial_loss':
-            op = self.grad_adversarial_loss_op
-        else:
-            raise ValueError('Loss must be specified')
-
-        if test_indices is not None:
-            num_iter = int(np.ceil(len(test_indices) / batch_size))
-
-            test_grad_loss_no_reg_val = None
-            for i in range(num_iter):
-                start = i * batch_size
-                end = int(min((i+1) * batch_size, len(test_indices)))
-
-                test_feed_dict = self.fill_feed_dict_with_some_ex(self.data_sets.test, test_indices[start:end])
-
-                temp = self.sess.run(op, feed_dict=test_feed_dict)
-
-                if test_grad_loss_no_reg_val is None:
-                    test_grad_loss_no_reg_val = [a * (end-start) for a in temp]
-                else:
-                    test_grad_loss_no_reg_val = [a + b * (end-start) for (a, b) in zip(test_grad_loss_no_reg_val, temp)]
-
-            test_grad_loss_no_reg_val = [a/len(test_indices) for a in test_grad_loss_no_reg_val]
-
-        else:
-            test_grad_loss_no_reg_val = self.minibatch_mean_eval([op], self.data_sets.test)[0]
-        
-        return test_grad_loss_no_reg_val
-
-
-    def get_train_grad_loss_no_reg_val(self, train_indices, batch_size, loss_type='normal_loss'):
-
-        if loss_type == 'normal_loss':
-            op = self.grad_loss_no_reg_op
-        elif loss_type == 'adversarial_loss':
-            op = self.grad_adversarial_loss_op
-        else:
-            raise ValueError('Loss must be specified')
-
-        if train_indices is not None:
-            num_iter = int(np.ceil(len(train_indices) / batch_size))
-
-            train_grad_loss_no_reg_val = None
-            for i in range(num_iter):
-                start = i * batch_size
-                end = int(min((i+1) * batch_size, len(train_indices)))
-
-                train_feed_dict = self.fill_feed_dict_with_some_ex(self.data_sets.train, train_indices[start:end])
-
-                temp = self.sess.run(op, feed_dict=train_feed_dict)
-
-                if train_grad_loss_no_reg_val is None:
-                    train_grad_loss_no_reg_val = [a * (end-start) for a in temp]
-                else:
-                    train_grad_loss_no_reg_val = [a + b * (end-start) for (a, b) in zip(train_grad_loss_no_reg_val, temp)]
-
-            train_grad_loss_no_reg_val = [a/len(train_indices) for a in train_grad_loss_no_reg_val]
-
-        else:
-            train_grad_loss_no_reg_val = self.minibatch_mean_eval([op], self.data_sets.train)[0]
-        
-        return train_grad_loss_no_reg_val        
-
-    def get_influence_on_test_loss(self, test_indices, train_idx, batch_size, force_refresh=False,
-        approx_type='cg', approx_params=None, test_description=None,
-        loss_type='normal_loss',
-        margins=False,
-        X=None, Y=None,
-        test_indices_from_train=False,
-        use_hessian_lu=False):
-        
-        if batch_size == 'default':
+    def get_grad_loss_no_reg_val(self, dataset, indices, batch_size=None, loss_type='normal_loss'):
+        if batch_size is None:
             batch_size = self.test_grad_batch_size
 
+        if loss_type == 'normal_loss':
+            op = self.grad_loss_no_reg_op
+        elif loss_type == 'adversarial_loss':
+            op = self.grad_adversarial_loss_op
+        else:
+            raise ValueError('Loss must be specified')
+
+        if indices is not None:
+            num_iter = int(np.ceil(len(indices) / batch_size))
+
+            grad_loss_no_reg_val = None
+            for i in range(num_iter):
+                start = i * batch_size
+                end = int(min((i+1) * batch_size, len(indices)))
+
+                feed_dict = self.fill_feed_dict_with_some_ex(dataset, indices[start:end])
+
+                temp = self.sess.run(op, feed_dict=feed_dict)
+
+                if grad_loss_no_reg_val is None:
+                    grad_loss_no_reg_val = [a * (end-start) for a in temp]
+                else:
+                    grad_loss_no_reg_val = [a + b * (end-start) for (a, b) in zip(grad_loss_no_reg_val, temp)]
+
+            grad_loss_no_reg_val = [a/len(indices) for a in grad_loss_no_reg_val]
+
+        else:
+            grad_loss_no_reg_val = self.minibatch_mean_eval([op], dataset)[0]
+        
+        return grad_loss_no_reg_val
+
+    def get_grad_margin(self, dataset, indices):
+        y = (dataset.labels[indices] == 1) * 2 - 1
+        grad_margin = np.mean(dataset.x[indices].T * y, axis=1)
+        return self.vec_to_list(grad_margin)
+
+    def get_influence_on_test_loss(self, test_indices, train_idx, batch_size=None, force_refresh=False,
+        approx_type='cg', approx_params=None, test_description=None,
+        loss_type='normal_loss',
+        X=None, Y=None):
+        
         # If train_idx is None then use X and Y (phantom points)
         # Need to make sure test_idx stays consistent between models
         # because mini-batching permutes dataset order
@@ -876,17 +851,7 @@ class GenericNeuralNet(object):
         else:
             if (X is not None) or (Y is not None): raise ValueError('X and Y cannot be specified if train_idx is specified.')
 
-        if margins:
-            dataset = self.data_sets.train if test_indices_from_train else self.data_sets.test
-            y = (dataset.labels[test_indices] == 1) * 2 - 1
-            test_grad_loss_no_reg_val = np.mean(-dataset.x[test_indices].T * y, axis=1)
-            test_grad_loss_no_reg_val = self.vec_to_list(test_grad_loss_no_reg_val)
-            #test_grad_loss_no_reg_val = np.multiply(np.tile([i if i>0 else -1 for i in self.data_sets.test.labels[test_indices]], (1, self.data_sets.test.x.shape[1])), self.data_sets.test.x[test_indices])
-        else:
-            if test_indices_from_train:
-                test_grad_loss_no_reg_val = self.get_train_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
-            else:
-                test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
+        test_grad_loss_no_reg_val = self.get_test_grad_loss_no_reg_val(test_indices, batch_size=batch_size, loss_type=loss_type)
 
         print('Norm of test gradient: %s' % np.linalg.norm(np.array(test_grad_loss_no_reg_val)))
 
@@ -900,18 +865,11 @@ class GenericNeuralNet(object):
             inverse_hvp = list(np.load(approx_filename)['inverse_hvp'])
             print('Loaded inverse HVP from %s' % approx_filename)
         else:
-            if use_hessian_lu:
-                # Note: this works only when there is a single tensor fo the weights. For neural nets, we would have to change
-                # how we compute the hessian
-                hessian = self.sess.run(self.hessian_total_loss_op, feed_dict=self.all_train_feed_dict)[0]
-                inverse_hvp = np.transpose(slin.lu_solve(slin.lu_factor(hessian), np.concatenate(test_grad_loss_no_reg_val)))
-                inverse_hvp = self.vec_to_list(inverse_hvp)
-            else:
-                inverse_hvp = self.get_inverse_hvp(
-                    test_grad_loss_no_reg_val,
-                    approx_type,
-                    approx_params,
-                    verbose=True)
+            inverse_hvp = self.get_inverse_hvp(
+                test_grad_loss_no_reg_val,
+                approx_type,
+                approx_params,
+                verbose=True)
 
             np.savez(approx_filename, inverse_hvp=inverse_hvp)
             print('Saved inverse HVP to %s' % approx_filename)
