@@ -133,9 +133,10 @@ def get_fixed_test_influence(model, test_points):
     fixed_test_pred_margin_infl = []
     for test_idx in test_points:
         pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', use_hessian_lu=use_hessian_lu)
-        pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
         fixed_test_pred_infl.append(pred_infl)
-        fixed_test_pred_margin_infl.append(pred_margin_infl)
+        if model.num_classes == 2:
+            pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
+            fixed_test_pred_margin_infl.append(pred_margin_infl)
         print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
 
     return fixed_test_pred_infl, fixed_test_pred_margin_infl
@@ -168,11 +169,12 @@ def retrain(model, remove_subsets, remove_tags):
                                                       test_indices_from_train=True, # remove_indices refers to training points
                                                       test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
         self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
-        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
-                                                             test_indices_from_train=True, # remove_indices refers to training points
-                                                             margins=True, use_hessian_lu=use_hessian_lu,
-                                                             test_description='subset-{}-{}'.format(i, remove_tags[i]))
-        self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
+        if num_classes == 2:
+            pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
+                                                                 test_indices_from_train=True, # remove_indices refers to training points
+                                                                 margins=True, use_hessian_lu=use_hessian_lu,
+                                                                 test_description='subset-{}-{}'.format(i, remove_tags[i]))
+            self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
 
         if (i % n_report == 0):
             cur_time = time.time()
