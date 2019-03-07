@@ -18,9 +18,9 @@ from configMaker import make_config, get_model_name
 seed = 10
 subset_seed = 0
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
-#dataset_type = 'hospital' # hospital is binary
+dataset_type = 'hospital' # hospital is binary
 #dataset_type = 'mnist_small' # 10-class
-dataset_type = 'hospital' # binary
+#dataset_type = 'spam' # binary
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -30,7 +30,7 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 100
+default_num_subsets = 80
 
 use_hessian_lu = not (dataset_type in ['processed_imageNet', 'spam']) 
 
