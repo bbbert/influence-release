@@ -132,10 +132,10 @@ def get_fixed_test_influence(model, test_points):
     fixed_test_pred_infl = []
     fixed_test_pred_margin_infl = []
     for test_idx in test_points:
-        pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', use_hessian_lu=use_hessian_lu)
+        pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', use_hessian_lu=use_hessian_lu)
         fixed_test_pred_infl.append(pred_infl)
         if model.num_classes == 2:
-            pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
+            pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
             fixed_test_pred_margin_infl.append(pred_margin_infl)
         print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
 
@@ -165,12 +165,12 @@ def retrain(model, remove_subsets, remove_tags):
             print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, remove_tags[i]))
 
         # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
-        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
+        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
                                                       test_indices_from_train=True, # remove_indices refers to training points
                                                       test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
         self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
-        if num_classes == 2:
-            pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
+        if model.num_classes == 2:
+            pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
                                                                  test_indices_from_train=True, # remove_indices refers to training points
                                                                  margins=True, use_hessian_lu=use_hessian_lu,
                                                                  test_description='subset-{}-{}'.format(i, remove_tags[i]))
