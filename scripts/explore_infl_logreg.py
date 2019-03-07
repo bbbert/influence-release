@@ -19,7 +19,8 @@ seed = 10
 subset_seed = 0
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
 #dataset_type = 'hospital' # hospital is binary
-dataset_type = 'mnist_small'
+#dataset_type = 'mnist_small' # 10-class
+dataset_type = 'spam' # binary
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -31,7 +32,7 @@ else:
     default_prop = 0.1
 default_num_subsets = 30
 
-use_hessian_lu = True
+use_hessian_lu = not (dataset_type in ['processed_imageNet', 'spam']) 
 
 def get_losses(model):
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
@@ -44,9 +45,9 @@ def get_margins(model):
     return train_margins, test_margins
 
 def get_cross_validated_weight_decay(initial_config_dict,
-                                     min_weight_decay=0.0001,
-                                     max_weight_decay=0.01,
-                                     weight_decay_samples=5,
+                                     min_weight_decay=1e-5,
+                                     max_weight_decay=1,
+                                     weight_decay_samples=7,
                                      num_folds=5):
     config_dict = initial_config_dict.copy()
     config_dict['spec'] = config_dict['spec'].copy()
@@ -296,6 +297,10 @@ if dataset_type == "hospital":
     test_points = [2267, 54826, 66678, 41567, 485, 25286]
 elif dataset_type == "spam":
     test_points = [14, 7, 10, 6, 15, 3]
+elif dataset_type == "mnist_small":
+    test_points = [6172, 2044, 2293, 5305, 324, 3761]
+elif dataset_type == "processed_imageNet":
+    test_points = [684, 850, 1492, 2357, 480, 2288]
 else:
     test_points = pick_test_points(test_losses)
 

@@ -63,7 +63,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         # self.hessians_op = hessians(self.total_loss, self.params)        
         
         # Multinomial has weird behavior when it's binary
-        C = 1.0 / (self.num_train_examples * self.weight_decay)        
+        C = 1.0 / (self.num_train_examples * self.weight_decay * 2.0)        
         self.sklearn_model = linear_model.LogisticRegression(
             C=C,
             tol=1e-8,
@@ -73,7 +73,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             warm_start=True,
             max_iter=self.max_lbfgs_iter)
 
-        C_minus_one = 1.0 / ((self.num_train_examples - 1) * self.weight_decay)
+        C_minus_one = 1.0 / ((self.num_train_examples - 1) * self.weight_decay * 2.0)
         self.sklearn_model_minus_one = linear_model.LogisticRegression(
             C=C_minus_one,
             tol=1e-8,

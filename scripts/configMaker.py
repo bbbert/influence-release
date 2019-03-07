@@ -102,7 +102,7 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
         input_dim = 127
     elif dataset_type in ['spam']:
         num_classes = 2
-        input_dim = 97
+        input_dim = 3352
 
     append_biases = False
     if model_type == 'logreg_lbfgs':

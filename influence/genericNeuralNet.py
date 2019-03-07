@@ -120,6 +120,7 @@ class GenericNeuralNet(object):
             print('LOADED HOSPITAL')
         elif self.dataset_type == 'spam':
             self.data_sets = load_spam()
+            print('LOADED SPAM')
         else:
             warnings.warn('Invalid dataset')
         #print(self.data_sets.train.x.shape)
