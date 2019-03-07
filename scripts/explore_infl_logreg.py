@@ -16,10 +16,10 @@ from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
 seed = 10
-subset_seed = 10
+subset_seed = 0
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
-dataset_type = 'hospital' # hospital is binary
-#dataset_type = 'spam' # spam is binary
+#dataset_type = 'hospital' # hospital is binary
+dataset_type = 'mnist_small'
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -29,7 +29,7 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 5
+default_num_subsets = 30
 
 use_hessian_lu = True
 
@@ -278,7 +278,7 @@ def get_same_features_subset(subset_picker_rng, num_train_pts, features, labels,
         return subsets
     else:
         print("Warning: unimplemented method to get subsets with the same features")
-        return None
+        return []
 
 initial_training_result = initial_training()
 model_name, config_dict, model = initial_training_result[:3]

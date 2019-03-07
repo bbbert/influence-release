@@ -69,7 +69,7 @@ class NLProcessor(object):
     def learn_vocab(self, docs):
         """
         Learns a vocabulary from docs.
-        """    
+        """
         self.vectorizer.fit(docs)
         
     def get_bag_of_words(self, docs):
