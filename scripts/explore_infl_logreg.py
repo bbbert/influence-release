@@ -49,15 +49,11 @@ def get_cross_validated_weight_decay(initial_config_dict,
                                      max_weight_decay=1,
                                      weight_decay_samples=7,
                                      num_folds=5):
-    config_dict = initial_config_dict.copy()
-    config_dict['spec'] = config_dict['spec'].copy()
-
     weight_decays = np.logspace(np.log10(min_weight_decay),
                                 np.log10(max_weight_decay), weight_decay_samples)
     cv_errors = np.zeros(weight_decay_samples)
     for i, weight_decay in enumerate(weight_decays):
-        config_dict['spec']['weight_decay'] = weight_decay
-        model = LogisticRegressionWithLBFGS(config_dict)
+        model.set_weight_decay(weight_decay)
 
         num_train_pts = model.num_train_examples
         fold_size = (num_train_pts + num_folds - 1) // num_folds
@@ -66,17 +62,14 @@ def get_cross_validated_weight_decay(initial_config_dict,
             fold_begin, fold_end = k * num_folds, min(num_train_pts, (k + 1) * num_folds)
             fold_train_indices = np.concatenate((np.arange(0, fold_begin), np.arange(fold_end, num_train_pts)))
 
-            model.all_train_feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, fold_train_indices)
-            model.train()
+            feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, fold_train_indices)
+            model.retrain(None, feed_dict, verbose=True)
             fold_feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, np.arange(fold_begin, fold_end))
             fold_loss = model.sess.run(model.loss_no_reg, feed_dict=fold_feed_dict)
             cv_error += fold_loss
 
         cv_errors[i] = cv_error
         print('Cross-validation error is {} for weight_decay={}.'.format(cv_error, weight_decay))
-
-        model.sess.close()
-        tf.reset_default_graph()
 
     best_i = np.argmin(cv_errors)
     best_weight_decay = weight_decays[best_i]
@@ -97,9 +90,9 @@ def initial_training():
     config_dict['spec']['max_lbfgs_iter'] = 1024
     config_dict['gen']['center_data'] = center_data
 
-    weight_decay = 0.0003#get_cross_validated_weight_decay(config_dict)
-    config_dict['spec']['weight_decay'] = weight_decay
     model = LogisticRegressionWithLBFGS(config_dict)
+    weight_decay = get_cross_validated_weight_decay(model)
+    model.set_weight_decay(weight_decay)
 
     model.train()
     train_losses, test_losses = get_losses(model)

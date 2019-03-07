@@ -30,7 +30,6 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
 
         spec_dict = config_dict['spec']
 
-        self.weight_decay = spec_dict['weight_decay']
         self.input_dim = spec_dict['input_dim']
         self.max_lbfgs_iter = spec_dict['max_lbfgs_iter']
 
@@ -62,8 +61,14 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         self.set_params_op = self.set_params()
         # self.hessians_op = hessians(self.total_loss, self.params)        
         
+        self.set_weight_decay(spec_dict['weight_decay'])
+
+    def set_weight_decay(self, weight_decay):
+        self.weight_decay = weight_decay
+        self.sess.run(tf.assign(self.l2_reg, self.weight_decay))
+
         # Multinomial has weird behavior when it's binary
-        C = 1.0 / (self.num_train_examples * self.weight_decay * 2.0)        
+        C = 1.0 / (self.num_train_examples * self.weight_decay * 2.0)
         self.sklearn_model = linear_model.LogisticRegression(
             C=C,
             tol=1e-8,
@@ -82,7 +87,6 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
             multi_class=self.multi_class,
             warm_start=True,
             max_iter=self.max_lbfgs_iter)  
-
 
     def get_all_params(self):
         all_params = []
@@ -115,7 +119,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
                 'weights', 
                 self.weight_shape,
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
-                wd=self.weight_decay)
+                wd=self.l2_reg)
             if not self.has_biases:
                 logits = tf.matmul(input, tf.reshape(weights, [self.input_dim, self.pseudo_num_classes]))
             else:

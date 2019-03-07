@@ -196,6 +196,7 @@ class GenericNeuralNet(object):
         self.input_placeholder, self.labels_placeholder = self.placeholder_inputs()
         self.num_train_examples = self.data_sets.train.labels.shape[0]
         self.num_test_examples = self.data_sets.test.labels.shape[0]
+        self.l2_reg = tf.Variable(0, dtype=tf.float32, name='l2_reg')
         
         # Setup inference and training
         if self.keep_probs is not None:
