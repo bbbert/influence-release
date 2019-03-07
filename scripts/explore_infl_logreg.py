@@ -120,7 +120,7 @@ def pick_test_points(test_losses):
 
     return list(high_loss) + list(random_loss)
 
-def get_fixed_test_influence(model, test_points):
+def get_fixed_test_influence(model, test_points, train_grad_losses):
     # Get predicted influences on a set of fixed test points
 
     approx_type = 'exact' if use_hessian_lu else 'cg'
@@ -138,8 +138,7 @@ def get_fixed_test_influence(model, test_points):
 
         pred_infl = []
         pred_margin_infl = []
-        for train_idx in range(model.num_train_examples):
-            train_grad_loss = np.concatenate(model.get_grad_loss_no_reg_val(model.data_sets.train, [train_idx]))
+        for train_idx, train_grad_loss in enumerate(train_grad_losses):
             pred_infl.append(np.dot(test_grad_loss_H_inv, train_grad_loss))
             if model.num_classes == 2:
                 pred_margin_infl.append(np.dot(test_grad_margin_H_inv, train_grad_loss))
@@ -312,7 +311,7 @@ else:
     test_points = pick_test_points(test_losses)
 
 print('Test points: {}'.format(test_points))
-fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points)
+fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points, grad_loss)
 
 subset_picker_rng = np.random.RandomState(subset_seed)
 
