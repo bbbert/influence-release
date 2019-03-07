@@ -178,7 +178,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         #     save_checkpoints=False, verbose=False)
 
     def warm_retrain(self, start_step, end_step, feed_dict, idx):
-
+        print("Deprecated. Use retrain().")
         self.train_with_LBFGS(
                 feed_dict=feed_dict,
                 save_checkpoints=False,
@@ -215,23 +215,7 @@ class LogisticRegressionWithLBFGS(GenericNeuralNet):
         assert len(Y_train.shape) == 1
         assert X_train.shape[0] == Y_train.shape[0]
 
-        if num_train_examples == self.num_train_examples:
-            if verbose: print('Using normal model')
-            model = self.sklearn_model
-        elif num_train_examples == self.num_train_examples - 1:
-            if verbose: print('Using model minus one')
-            model = self.sklearn_model_minus_one
-        else:
-            C = 1.0 / (num_train_examples * self.weight_decay)
-            model = linear_model.LogisticRegression(
-                C=C,
-                tol=1e-8,
-                fit_intercept=False, 
-                solver='lbfgs',
-                multi_class=self.multi_class,
-                warm_start=True,
-                max_iter=self.max_lbfgs_iter)  
-
+        model = self.sklearn_model
         model.fit(X_train, Y_train) 
         # sklearn returns coefficients in shape num_classes x num_features
         # whereas our weights are defined as num_features x num_classes

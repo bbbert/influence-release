@@ -20,7 +20,7 @@ subset_seed = 0
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
 #dataset_type = 'hospital' # hospital is binary
 #dataset_type = 'mnist_small' # 10-class
-dataset_type = 'spam' # binary
+dataset_type = 'hospital' # binary
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -30,7 +30,7 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 100
+default_num_subsets = 1
 
 use_hessian_lu = not (dataset_type in ['processed_imageNet', 'spam']) 
 
@@ -91,8 +91,8 @@ def initial_training():
     config_dict['gen']['center_data'] = center_data
 
     model = LogisticRegressionWithLBFGS(config_dict)
-    weight_decay = get_cross_validated_weight_decay(model)
-    model.set_weight_decay(weight_decay)
+    # weight_decay = get_cross_validated_weight_decay(model)
+    # model.set_weight_decay(weight_decay)
 
     model.train()
     train_losses, test_losses = get_losses(model)
@@ -312,7 +312,7 @@ else:
     test_points = pick_test_points(test_losses)
 
 print('Test points: {}'.format(test_points))
-fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points)
+fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points[:1])
 
 subset_picker_rng = np.random.RandomState(subset_seed)
 
