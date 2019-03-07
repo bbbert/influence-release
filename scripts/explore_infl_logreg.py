@@ -19,6 +19,7 @@ seed = 10
 subset_seed = 10
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
 dataset_type = 'hospital' # hospital is binary
+#dataset_type = 'spam' # spam is binary
 center_data = False
 model_type = 'logreg_lbfgs'
 out = './output-explore-infl-logreg'
@@ -291,9 +292,12 @@ model_name, config_dict, model = initial_training_result[:3]
 train_losses, test_losses, train_margins, test_margins, grad_loss = initial_training_result[3:]
 print('Finished original training.')
 
-#test_points = pick_test_points(test_losses)
 if dataset_type == "hospital":
     test_points = [2267, 54826, 66678, 41567, 485, 25286]
+elif dataset_type == "spam":
+    test_points = [14, 7, 10, 6, 15, 3]
+else:
+    test_points = pick_test_points(test_losses)
 
 print('Test points: {}'.format(test_points))
 fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points)
