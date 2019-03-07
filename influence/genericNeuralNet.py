@@ -894,7 +894,7 @@ class GenericNeuralNet(object):
         if test_description is None:
             test_description = test_indices
 
-        approx_filename = os.path.join(self.train_dir, '%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, test_description))
+        approx_filename = os.path.join(self.train_dir, '%s-%s-%s-%s-test-%s.npz' % (self.model_name, approx_type, loss_type, margins, test_description))
         if os.path.exists(approx_filename) and force_refresh == False:
             inverse_hvp = list(np.load(approx_filename)['inverse_hvp'])
             print('Loaded inverse HVP from %s' % approx_filename)
