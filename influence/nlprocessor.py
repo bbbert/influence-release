@@ -9,6 +9,12 @@ class NLProcessor(object):
     def __init__(self):
         # self.nlp = English()
         self.nlp = en_core_web_sm.load()
+
+        # spacy is amazing at figuring out if words in its
+        # vocabulary are in its vocabulary
+        for lexeme in self.nlp.vocab:
+            lexeme.is_oov = False
+
         # self.nlp = spacy.load('en_core_web_sm-1.2.0')
         self.vectorizer = CountVectorizer(min_df=5)  
         self.word_vec_len = 300
