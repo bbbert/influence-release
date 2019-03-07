@@ -44,10 +44,10 @@ def get_margins(model):
     test_margins = model.sess.run(model.margins, feed_dict=model.all_test_feed_dict)
     return train_margins, test_margins
 
-def get_cross_validated_weight_decay(initial_config_dict,
-                                     min_weight_decay=1e-5,
-                                     max_weight_decay=1,
-                                     weight_decay_samples=7,
+def get_cross_validated_weight_decay(model,
+                                     min_weight_decay=1e-6,
+                                     max_weight_decay=10,
+                                     weight_decay_samples=8,
                                      num_folds=5):
     weight_decays = np.logspace(np.log10(min_weight_decay),
                                 np.log10(max_weight_decay), weight_decay_samples)
@@ -63,7 +63,7 @@ def get_cross_validated_weight_decay(initial_config_dict,
             fold_train_indices = np.concatenate((np.arange(0, fold_begin), np.arange(fold_end, num_train_pts)))
 
             feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, fold_train_indices)
-            model.retrain(None, feed_dict, verbose=True)
+            model.retrain(None, feed_dict, verbose=False)
             fold_feed_dict = model.fill_feed_dict_with_some_ex(model.data_sets.train, np.arange(fold_begin, fold_end))
             fold_loss = model.sess.run(model.loss_no_reg, feed_dict=fold_feed_dict)
             cv_error += fold_loss
