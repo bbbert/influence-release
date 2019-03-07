@@ -235,7 +235,9 @@ class GenericNeuralNet(object):
 
         self.hessian_vector = hessian_vector_product(self.total_loss, self.params, self.v_placeholder)
 
-        self.grad_loss_wrt_input_op = tf.gradients(self.total_loss, self.input_placeholder)        
+        self.grad_loss_wrt_input_op = tf.gradients(self.total_loss, self.input_placeholder)
+
+        self.hessian_total_loss_op = tf.hessians(self.total_loss, self.params)
 
         # Because tf.gradients auto accumulates, we probably don't need the add_n (or even reduce_sum)        
         self.influence_op = tf.add_n(
@@ -851,15 +853,15 @@ class GenericNeuralNet(object):
         else:
             train_grad_loss_no_reg_val = self.minibatch_mean_eval([op], self.data_sets.train)[0]
         
-        return train_grad_loss_no_reg_val
+        return train_grad_loss_no_reg_val        
 
-
-    def get_influence_on_test_loss(self, test_indices, train_idx, force_refresh, batch_size,
+    def get_influence_on_test_loss(self, test_indices, train_idx, batch_size, force_refresh=False,
         approx_type='cg', approx_params=None, test_description=None,
         loss_type='normal_loss',
         margins=False,
         X=None, Y=None,
-        test_indices_from_train=False):
+        test_indices_from_train=False,
+        use_hessian_lu=False):
         
         if batch_size == 'default':
             batch_size = self.test_grad_batch_size
@@ -898,11 +900,15 @@ class GenericNeuralNet(object):
             inverse_hvp = list(np.load(approx_filename)['inverse_hvp'])
             print('Loaded inverse HVP from %s' % approx_filename)
         else:
-            inverse_hvp = self.get_inverse_hvp(
-                test_grad_loss_no_reg_val,
-                approx_type,
-                approx_params,
-                verbose=True)
+            if use_hessian_lu:
+                hessian = self.sess.run(self.hessian_total_loss_op, feed_dict=self.all_train_feed_dict)[0]
+                inverse_hvp = np.transpose(slin.lu_solve(slin.lu_factor(hessian), np.transpose(test_grad_loss_no_reg_val)))
+            else:
+                inverse_hvp = self.get_inverse_hvp(
+                    test_grad_loss_no_reg_val,
+                    approx_type,
+                    approx_params,
+                    verbose=True)
 
             np.savez(approx_filename, inverse_hvp=inverse_hvp)
             print('Saved inverse HVP to %s' % approx_filename)
@@ -918,7 +924,6 @@ class GenericNeuralNet(object):
                 single_train_feed_dict = self.fill_feed_dict_manual(X[counter, :], [Y[counter]])      
                 train_grad_loss_val = self.sess.run(self.grad_total_loss_op, feed_dict=single_train_feed_dict)
                 predicted_loss_diffs[counter] = np.dot(np.concatenate(inverse_hvp), np.concatenate(train_grad_loss_val)) / self.num_train_examples            
-
         else:            
             num_to_remove = len(train_idx)
             predicted_loss_diffs = np.zeros([num_to_remove])
@@ -926,10 +931,8 @@ class GenericNeuralNet(object):
                 single_train_feed_dict = self.fill_feed_dict_with_one_ex(self.data_sets.train, idx_to_remove)
                 train_grad_loss_val = self.sess.run(self.grad_total_loss_op, feed_dict=single_train_feed_dict)
                 predicted_loss_diffs[counter] = np.dot(np.concatenate(inverse_hvp), np.concatenate(train_grad_loss_val)) / self.num_train_examples
-                
         duration = time.time() - start_time
         print('Multiplying by %s train examples took %s sec' % (num_to_remove, duration))
-
         return predicted_loss_diffs
 
 

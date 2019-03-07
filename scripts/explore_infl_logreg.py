@@ -15,7 +15,8 @@ from sklearn.cluster import KMeans
 from influence.logisticRegressionWithLBFGS import LogisticRegressionWithLBFGS
 from configMaker import make_config, get_model_name
 
-seed = 7
+seed = 10
+subset_seed = 10
 #dataset_type = 'processed_imageNet' # processed_imageNet is 10-class
 dataset_type = 'hospital' # hospital is binary
 center_data = False
@@ -27,7 +28,9 @@ if dataset_type == 'processed_imageNet':
     default_prop = 0.09 # Doing 10% messes up the single-class subset in imageNet since an entire class is removed; the training breaks
 else:
     default_prop = 0.1
-default_num_subsets = 6
+default_num_subsets = 5
+
+use_hessian_lu = True
 
 def get_losses(model):
     train_losses = model.sess.run(model.indiv_loss_no_reg, feed_dict=model.all_train_feed_dict)
@@ -129,8 +132,8 @@ def get_fixed_test_influence(model, test_points):
     fixed_test_pred_infl = []
     fixed_test_pred_margin_infl = []
     for test_idx in test_points:
-        pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default')
-        pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=True, batch_size='default', margins=True)
+        pred_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', use_hessian_lu=use_hessian_lu)
+        pred_margin_infl = model.get_influence_on_test_loss([test_idx], np.arange(num_train_pts), force_refresh=False, batch_size='default', margins=True, use_hessian_lu=use_hessian_lu)
         fixed_test_pred_infl.append(pred_infl)
         fixed_test_pred_margin_infl.append(pred_margin_infl)
         print('Calculated scalar infl for all training points on test_idx {}.'.format(test_idx))
@@ -166,13 +169,13 @@ def retrain(model, remove_subsets, remove_tags):
             train_margin, test_margin = get_margins(model)
             train_margins.append(train_margin)
             test_margins.append(test_margin)
-        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
+        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
                                                       test_indices_from_train=True, # remove_indices refers to training points
-                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]))
+                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
         self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
-        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=True, batch_size='default',
+        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
                                                              test_indices_from_train=True, # remove_indices refers to training points
-                                                             margins=True,
+                                                             margins=True, use_hessian_lu=use_hessian_lu,
                                                              test_description='subset-{}-{}'.format(i, remove_tags[i]))
         self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
         # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
@@ -278,7 +281,6 @@ if dataset_type == "hospital":
 print('Test points: {}'.format(test_points))
 fixed_test_pred_infl, fixed_test_pred_margin_infl = get_fixed_test_influence(model, test_points)
 
-subset_seed = 13
 subset_picker_rng = np.random.RandomState(subset_seed)
 
 num_train_pts = model.num_train_examples
