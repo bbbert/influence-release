@@ -150,14 +150,39 @@ def retrained_losses(model, remove_indices):
 def retrain(model, remove_subsets, remove_tags):
     if remove_subsets is None:
         return None, None
-    train_losses, test_losses = [], []
-    train_margins, test_margins = [], []
-    self_pred_infls = []
-    self_pred_margin_infls = []
+
     n = len(remove_subsets)
     n_report = max(n // 100, 1)
 
+    # It is important that the influence gets calculated before the model is retrained,
+    # so that the parameters are the original parameters
     start_time = time.time()
+    self_pred_infls = []
+    self_pred_margin_infls = []
+    for i, remove_indices in enumerate(remove_subsets):
+        if (i % n_report == 0):
+            print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, remove_tags[i]))
+
+        # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
+        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
+                                                      test_indices_from_train=True, # remove_indices refers to training points
+                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
+        self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
+        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
+                                                             test_indices_from_train=True, # remove_indices refers to training points
+                                                             margins=True, use_hessian_lu=use_hessian_lu,
+                                                             test_description='subset-{}-{}'.format(i, remove_tags[i]))
+        self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
+
+        if (i % n_report == 0):
+            cur_time = time.time()
+            time_per_retrain = (cur_time - start_time) / (i + 1)
+            remaining_time = time_per_retrain * (n - i- 1)
+            print('Each self-influence calculation takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
+
+    start_time = time.time()
+    train_losses, test_losses = [], []
+    train_margins, test_margins = [], []
     for i, remove_indices in enumerate(remove_subsets):
         if (i % n_report == 0):
             print('Retraining model {} out of {} (tag={})'.format(i, n, remove_tags[i]))
@@ -169,16 +194,6 @@ def retrain(model, remove_subsets, remove_tags):
             train_margin, test_margin = get_margins(model)
             train_margins.append(train_margin)
             test_margins.append(test_margin)
-        pred_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
-                                                      test_indices_from_train=True, # remove_indices refers to training points
-                                                      test_description='subset-{}-{}'.format(i, remove_tags[i]), use_hessian_lu=use_hessian_lu)
-        self_pred_infls.append(np.sum(pred_infls) * len(remove_indices))
-        pred_margin_infls = model.get_influence_on_test_loss(remove_indices, remove_indices, force_refresh=False, batch_size='default',
-                                                             test_indices_from_train=True, # remove_indices refers to training points
-                                                             margins=True, use_hessian_lu=use_hessian_lu,
-                                                             test_description='subset-{}-{}'.format(i, remove_tags[i]))
-        self_pred_margin_infls.append(np.sum(pred_margin_infls) * len(remove_indices))
-        # get_influence_on_test_loss returns influence for the mean test gradient, we want actual self influences
 
         if (i % n_report == 0):
             cur_time = time.time()

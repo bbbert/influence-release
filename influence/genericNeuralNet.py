@@ -787,7 +787,6 @@ class GenericNeuralNet(object):
 
         return self.vec_to_list(fmin_results)
 
-
     def get_test_grad_loss_no_reg_val(self, test_indices, batch_size, loss_type='normal_loss'):
 
         if loss_type == 'normal_loss':
@@ -901,8 +900,11 @@ class GenericNeuralNet(object):
             print('Loaded inverse HVP from %s' % approx_filename)
         else:
             if use_hessian_lu:
+                # Note: this works only when there is a single tensor fo the weights. For neural nets, we would have to change
+                # how we compute the hessian
                 hessian = self.sess.run(self.hessian_total_loss_op, feed_dict=self.all_train_feed_dict)[0]
-                inverse_hvp = np.transpose(slin.lu_solve(slin.lu_factor(hessian), np.transpose(test_grad_loss_no_reg_val)))
+                inverse_hvp = np.transpose(slin.lu_solve(slin.lu_factor(hessian), np.concatenate(test_grad_loss_no_reg_val)))
+                inverse_hvp = self.vec_to_list(inverse_hvp)
             else:
                 inverse_hvp = self.get_inverse_hvp(
                     test_grad_loss_no_reg_val,
@@ -934,8 +936,6 @@ class GenericNeuralNet(object):
         duration = time.time() - start_time
         print('Multiplying by %s train examples took %s sec' % (num_to_remove, duration))
         return predicted_loss_diffs
-
-
 
     def find_eigvals_of_hessian(self, num_iter, num_prints=10):
 
