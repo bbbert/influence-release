@@ -61,7 +61,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
       return dense_to_one_hot(labels, num_classes)
     return labels
 
-def load_mnist(validation_size=5000, center_data=False):
+def load_mnist(validation_size=5000):
   SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
  
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
@@ -105,13 +105,9 @@ def load_mnist(validation_size=5000, center_data=False):
   validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
   test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
 
-  mnist = base.Datasets(train=train, validation=validation, test=test)
-  if center_data:
-    mnist = center_data(mnist)
+  return base.Datasets(train=train, validation=validation, test=test)
 
-  return mnist
-
-def load_small_mnist(validation_size=5000, random_seed=0, center_data=False):
+def load_small_mnist(validation_size=5000, random_seed=0):
   dataset_dir = get_dataset_dir('mnist')
   mnist_small_file = 'mnist_small_val-{}_seed-{}.npz'.format(
       validation_size, random_seed)
@@ -168,20 +164,4 @@ def load_small_mnist(validation_size=5000, random_seed=0, center_data=False):
   validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
   test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
 
-  mnist_small = base.Datasets(train=train, validation=validation, test=test)
-  if center_data:
-    mnist_small = center_data(mnist_small)
-
-  return mnist_small
-
-def center_data(datasets):
-  allx = np.concatenate((datasets.train.x, datasets.test.x))
-  valid = None
-  if datasets.validation is not None:
-    allx = np.concatenate((allx, datasets.validation.x))
-  avg = np.mean(allx, axis=0)
-  if datasets.validation is not None:
-    valid = DataSet(datasets.validation.x - avg, datasets.validation.labels, 0, np.zeros(len(datasets.validation.labels),dtype=bool))
-  return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels, 0, np.zeros(len(datasets.train.labels),dtype=bool)),
-          validation=valid,
-          test=DataSet(datasets.test.x - avg, datasets.test.labels, 0, np.zeros(len(datasets.test.labels),dtype=bool)))
+  return base.Datasets(train=train, validation=validation, test=test)

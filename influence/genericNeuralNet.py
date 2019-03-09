@@ -27,8 +27,8 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 
 from influence.hessians import hessian_vector_product
 
-from datasets.common import DataSet
-from datasets.mnist import load_mnist, load_small_mnist, center_data
+from datasets.common import DataSet, center_data
+from datasets.mnist import load_mnist, load_small_mnist
 from datasets.cifar10 import load_cifar10, load_small_cifar10
 from datasets.hospital import load_hospital
 from datasets.spam import load_spam

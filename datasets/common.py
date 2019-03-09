@@ -225,3 +225,15 @@ def find_distances(target, X, theta=None):
         
         # Project onto theta
         return np.abs((X - target).dot(theta))
+
+def center_data(datasets):
+    allx = np.concatenate((datasets.train.x, datasets.test.x))
+    valid = None
+    if datasets.validation is not None:
+        allx = np.concatenate((allx, datasets.validation.x))
+    avg = np.mean(allx, axis=0)
+    if datasets.validation is not None:
+        valid = DataSet(datasets.validation.x - avg, datasets.validation.labels, 0, np.zeros(len(datasets.validation.labels),dtype=bool))
+    return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels, 0, np.zeros(len(datasets.train.labels),dtype=bool)),
+                         validation=valid,
+                         test=DataSet(datasets.test.x - avg, datasets.test.labels, 0, np.zeros(len(datasets.test.labels),dtype=bool)))
