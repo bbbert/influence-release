@@ -26,12 +26,12 @@ from keras import backend as K
 from tensorflow.contrib.learn.python.learn.datasets import base
 
 from influence.hessians import hessian_vector_product
-from influence.dataset import DataSet
-from load_mnist import load_mnist, load_small_mnist, center_data
-from load_cifar10 import load_cifar10, load_small_cifar10
-from load_hospital import load_hospital
-from load_spam import load_spam
 
+from datasets.common import DataSet
+from datasets.mnist import load_mnist, load_small_mnist, center_data
+from datasets.cifar10 import load_cifar10, load_small_cifar10
+from datasets.hospital import load_hospital
+from datasets.spam import load_spam
 
 def variable(name, shape, initializer):
     dtype = tf.float32

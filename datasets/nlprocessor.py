@@ -6,8 +6,9 @@ import numpy as np
 import en_core_web_sm
 
 class NLProcessor(object):
-    def __init__(self):
+    def __init__(self, rng):
         # self.nlp = English()
+        self.rng = rng
         self.nlp = en_core_web_sm.load()
 
         # spacy is amazing at figuring out if words in its
@@ -40,7 +41,7 @@ class NLProcessor(object):
 
 
         docs_Y = zip(docs, Y)
-        np.random.shuffle(docs_Y)
+        self.rng.shuffle(docs_Y)
         docs, Y = zip(*docs_Y)
 
         Y = np.array(Y)

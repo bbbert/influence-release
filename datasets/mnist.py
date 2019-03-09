@@ -1,17 +1,18 @@
-# Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals  
 
 import os
 import gzip
 import numpy as np
 
+from datasets.common import get_dataset_dir, maybe_download, DataSet
 from tensorflow.contrib.learn.python.learn.datasets import base
-from influence.dataset import DataSet
-
 
 def _read32(bytestream):
   dt = np.dtype(np.uint32).newbyteorder('>')
   return np.frombuffer(bytestream.read(4), dtype=dt)[0]
-
 
 def extract_images(f):
   """Extract the images into a 4D uint8 np array [index, y, x, depth].
@@ -35,7 +36,6 @@ def extract_images(f):
     data = np.frombuffer(buf, dtype=np.uint8)
     data = data.reshape(num_images, rows, cols, 1)
     return data
-
 
 def extract_labels(f, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 np array [index].
@@ -61,9 +61,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
       return dense_to_one_hot(labels, num_classes)
     return labels
 
-
-def load_mnist(train_dir, validation_size=5000):
-
+def load_mnist(validation_size=5000, center_data=False):
   SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
  
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
@@ -71,24 +69,22 @@ def load_mnist(train_dir, validation_size=5000):
   TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
   TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
-  local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
-                                   SOURCE_URL + TRAIN_IMAGES)
-  with open(local_file, 'rb') as f:
+  dataset_dir = get_dataset_dir('mnist')
+
+  local_files = [maybe_download(SOURCE_URL + image_file, image_file, dataset_dir)
+                 for image_file in (TRAIN_IMAGES, TRAIN_LABELS,
+                                    TEST_IMAGES, TEST_LABELS)]
+
+  with open(local_files[0], 'rb') as f:
     train_images = extract_images(f)
 
-  local_file = base.maybe_download(TRAIN_LABELS, train_dir,
-                                   SOURCE_URL + TRAIN_LABELS)
-  with open(local_file, 'rb') as f:
+  with open(local_files[1], 'rb') as f:
     train_labels = extract_labels(f)
 
-  local_file = base.maybe_download(TEST_IMAGES, train_dir,
-                                   SOURCE_URL + TEST_IMAGES)
-  with open(local_file, 'rb') as f:
+  with open(local_files[2], 'rb') as f:
     test_images = extract_images(f)
 
-  local_file = base.maybe_download(TEST_LABELS, train_dir,
-                                   SOURCE_URL + TEST_LABELS)
-  with open(local_file, 'rb') as f:
+  with open(local_files[3], 'rb') as f:
     test_labels = extract_labels(f)
 
   if not 0 <= validation_size <= len(train_images):
@@ -109,54 +105,74 @@ def load_mnist(train_dir, validation_size=5000):
   validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
   test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
 
-  return base.Datasets(train=train, validation=validation, test=test)
+  mnist = base.Datasets(train=train, validation=validation, test=test)
+  if center_data:
+    mnist = center_data(mnist)
 
-def load_small_mnist(train_dir, validation_size=5000, random_seed=0):
-  np.random.seed(random_seed)
-  data_sets = load_mnist(train_dir, validation_size)
+  return mnist
 
-  train_images = data_sets.train.x
-  train_labels = data_sets.train.labels
-  perm = np.arange(len(train_labels))
-  np.random.shuffle(perm)
-  num_to_keep = int(len(train_labels) / 10)
-  perm = perm[:num_to_keep]
-  train_images = train_images[perm, :]
-  train_labels = train_labels[perm]
+def load_small_mnist(validation_size=5000, random_seed=0, center_data=False):
+  dataset_dir = get_dataset_dir('mnist')
+  mnist_small_file = 'mnist_small_val-{}_seed-{}.npz'.format(
+      validation_size, random_seed)
+  mnist_small_path = os.path.join(dataset_dir, mnist_small_file)
 
-  validation_images = data_sets.validation.x
-  validation_labels = data_sets.validation.labels
-  # perm = np.arange(len(validation_labels))
-  # np.random.shuffle(perm)
-  # num_to_keep = int(len(validation_labels) / 10)
-  # perm = perm[:num_to_keep]  
-  # validation_images = validation_images[perm, :]
-  # validation_labels = validation_labels[perm]
+  if not os.path.exists(mnist_small_path):
+    rng = np.random.RandomState(seed=random_seed)
+    data_sets = load_mnist(validation_size)
 
-  test_images = data_sets.test.x
-  test_labels = data_sets.test.labels
-  # perm = np.arange(len(test_labels))
-  # np.random.shuffle(perm)
-  # num_to_keep = int(len(test_labels) / 10)
-  # perm = perm[:num_to_keep]
-  # test_images = test_images[perm, :]
-  # test_labels = test_labels[perm]
+    train_images = data_sets.train.x
+    train_labels = data_sets.train.labels
+    perm = np.arange(len(train_labels))
+    rng.shuffle(perm)
+    num_to_keep = int(len(train_labels) / 10)
+    perm = perm[:num_to_keep]
+    train_images = train_images[perm, :]
+    train_labels = train_labels[perm]
 
-  savename = '../output/mnist_small_save.npz'
-  if not os.path.exists(savename):
-    np.savez(savename,
-          train_images=train_images,
-          train_labels=train_labels,
-          validation_images=validation_images,
-          validation_labels=validation_labels,
-          test_images=test_images,
-          test_labels=test_labels)
-  
+    validation_images = data_sets.validation.x
+    validation_labels = data_sets.validation.labels
+    # perm = np.arange(len(validation_labels))
+    # rng.shuffle(perm)
+    # num_to_keep = int(len(validation_labels) / 10)
+    # perm = perm[:num_to_keep]  
+    # validation_images = validation_images[perm, :]
+    # validation_labels = validation_labels[perm]
+
+    test_images = data_sets.test.x
+    test_labels = data_sets.test.labels
+    # perm = np.arange(len(test_labels))
+    # rng.shuffle(perm)
+    # num_to_keep = int(len(test_labels) / 10)
+    # perm = perm[:num_to_keep]
+    # test_images = test_images[perm, :]
+    # test_labels = test_labels[perm]
+
+    np.savez(mnist_small_path,
+             train_images=train_images,
+             train_labels=train_labels,
+             validation_images=validation_images,
+             validation_labels=validation_labels,
+             test_images=test_images,
+             test_labels=test_labels)
+  else:
+    data = np.load(mnist_small_path)
+    train_images = data['train_images']
+    train_labels = data['train_labels']
+    validation_images = data['validation_images']
+    validation_labels = data['validation_labels']
+    test_images = data['test_images']
+    test_labels = data['test_labels']
+
   train = DataSet(train_images, train_labels, 0, np.zeros(len(train_labels),dtype=bool))
   validation = DataSet(validation_images, validation_labels, 0, np.zeros(len(validation_labels),dtype=bool))
   test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels),dtype=bool))
 
-  return base.Datasets(train=train, validation=validation, test=test)
+  mnist_small = base.Datasets(train=train, validation=validation, test=test)
+  if center_data:
+    mnist_small = center_data(mnist_small)
+
+  return mnist_small
 
 def center_data(datasets):
   allx = np.concatenate((datasets.train.x, datasets.test.x))
