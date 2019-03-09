@@ -156,6 +156,8 @@ def make_config(seed, dataset_type, model_type, out, num_steps=300000, nametag='
     config_dict = {'gen': gen_dict, 'spec': spec_dict}
 
     if save:
+        if not os.path.exists('configs/'):
+            os.makedirs('configs/')
         pickle_out = open('configs/config_dict_{}.pickle'.format(model_name), 'wb')
         pickle.dump(config_dict, pickle_out)
         pickle_out.close()
