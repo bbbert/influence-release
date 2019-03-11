@@ -94,16 +94,16 @@ class GenericNeuralNet(object):
         self.batch_size = gen_dict['batch_size']
         self.dataset_type = gen_dict['dataset_type']
         if self.dataset_type == 'mnist':
-            self.data_sets = load_mnist('data')
+            self.data_sets = load_mnist()
             print('LOADED FULL MNIST')
         elif self.dataset_type == 'mnist_small':
-            self.data_sets = load_small_mnist('data')
+            self.data_sets = load_small_mnist()
             print('LOADED SMALL MNIST')
         elif self.dataset_type == 'cifar10':
-            self.data_sets = load_cifar10('data')
+            self.data_sets = load_cifar10()
             print('LOADED FULL CIFAR10')
         elif self.dataset_type == 'cifar10_small':
-            self.data_sets = load_small_cifar10('data')
+            self.data_sets = load_small_cifar10()
             print('LOADED SMALL CIFAR10')
         elif self.dataset_type == 'processed_imageNet':
             train_f = np.load('data/animals_900_300_inception_features_train.npz')
@@ -641,6 +641,9 @@ class GenericNeuralNet(object):
             feed_dict[pl_block] = vec_block        
         return feed_dict
 
+    def get_hessian(self):
+        hessian = self.sess.run(self.hessian_total_loss_op, feed_dict=self.all_train_feed_dict)[0]
+        return hessian
 
     def get_inverse_hvp(self, v, approx_type='cg', approx_params=None, verbose=True):
         assert approx_type in ['cg', 'lissa', 'exact']

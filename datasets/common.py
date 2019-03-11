@@ -237,3 +237,17 @@ def center_data(datasets):
     return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels, 0, np.zeros(len(datasets.train.labels),dtype=bool)),
                          validation=valid,
                          test=DataSet(datasets.test.x - avg, datasets.test.labels, 0, np.zeros(len(datasets.test.labels),dtype=bool)))
+
+def append_bias(datasets):
+    def append_bias_x(A):
+        return np.hstack((A, np.ones((A.shape[0], 1))))
+
+    if datasets.train is not None:
+        datasets.train._x = append_bias_x(datasets.train._x)
+    if datasets.test is not None:
+        datasets.test._x = append_bias_x(datasets.test._x)
+    if datasets.validation is not None:
+        datasets.validation._x = append_bias_x(datasets.validation._x)
+
+    return datasets
+

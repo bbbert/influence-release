@@ -24,7 +24,7 @@ def phase(priority=0):
   """
   Decorates an instancemethod of an Experiment class to denote
   that it is an experiment phase. The tags will be used by the class
-  decorator `phases' to register phases as a class variable.
+  decorator `collect_phases' to register phases as a class variable.
 
   :param priority: A priority number for phase.idxing. Phases will be ordered
                    in order of high to low priority, and then by order of
@@ -41,7 +41,7 @@ def phase(priority=0):
     return wrapper
   return decorator
 
-def phases(cls):
+def collect_phases(cls):
   """
   Decorates a class inheriting Experiment. Compiles all instancemethods
   decorated by `phase' into a class variable PHASES containing
@@ -61,7 +61,7 @@ def phases(cls):
                 for i, phase_attr in enumerate(phase_attrs)]
   return cls
 
-@phases
+@collect_phases
 class Experiment(object):
   """
   Base class to be inherited by any experiment.
@@ -276,7 +276,7 @@ class Experiment(object):
     exp.load_results()
     return exp
 
-@phases
+@collect_phases
 class TestExperiment(Experiment):
   """
   Example experiment class demonstrating how to write experiment phases.
