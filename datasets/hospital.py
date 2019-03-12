@@ -33,7 +33,7 @@ def load_hospital():
 
         # Numerical variables that we can pull directly
         X = df.loc[
-            :, 
+            :,
             [
                 'time_in_hospital',
                 'num_lab_procedures',
@@ -48,7 +48,7 @@ def load_hospital():
         categorical_var_names = [
             'gender',
             'race',
-            'age', 
+            'age',
             'discharge_disposition_id',
             'max_glu_serum',
             'A1Cresult',
@@ -89,7 +89,7 @@ def load_hospital():
                 drop_first = False
 
             dummies = pd.get_dummies(
-                categorical_var, 
+                categorical_var,
                 prefix=categorical_var_name,
                 drop_first=drop_first)
 
@@ -109,13 +109,13 @@ def load_hospital():
 
         ### Find indices of age features
         age_var = pd.Categorical(df.loc[:, 'age'])
-        age_var_names = ['age_%s' % age_var_name for age_var_name in age_var.categories]    
+        age_var_names = ['age_%s' % age_var_name for age_var_name in age_var.categories]
         age_var_indices = []
         for age_var_name in age_var_names:
             age_var_indices.append(np.where(X.columns.values == age_var_name)[0][0])
         age_var_indices = np.array(age_var_indices, dtype=int)
 
-        ### Split into training and test sets. 
+        ### Split into training and test sets.
         # For convenience, we balance the training set to have 10k positives and 10k negatives.
         num_examples = len(Y)
         assert X.shape[0] == num_examples

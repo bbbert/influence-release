@@ -1,7 +1,7 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-from __future__ import unicode_literals  
+from __future__ import unicode_literals
 
 import os
 import sys
@@ -47,9 +47,9 @@ def maybe_download(url, filename, download_dir):
         print("Downloading {} into {}".format(filename, download_dir))
 
         def _print_download_progress(count, blockSize, totalSize):
-          percent = int(count * blockSize * 100.0 / totalSize)
-          sys.stdout.write("\rDownloading {}: {}%".format(filename, percent))
-          sys.stdout.flush()
+            percent = int(count * blockSize * 100.0 / totalSize)
+            sys.stdout.write("\rDownloading {}: {}%".format(filename, percent))
+            sys.stdout.flush()
 
         file_path, _ = urllib.urlretrieve(url=url,
                                           filename=save_path,
@@ -62,10 +62,10 @@ def maybe_download(url, filename, download_dir):
 class DataSet(object):
     """
     Generic DataSet class containing batching and example omission functionality.
-    
+
     Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
     """
-    # N.B.: omits is a boolean vector where True = omit, False = keep 
+    # N.B.: omits is a boolean vector where True = omit, False = keep
     def __init__(self, x, labels, randomState, omits):
 
         if len(x.shape) > 2:
@@ -149,7 +149,7 @@ class DataSet(object):
 
     def reset_batch(self):
         raise DeprecationWarning("You probably don't want to reset all: reset_orig for eval funcs and set_omits for overriding/updating")
-        self._index_in_epoch = 0        
+        self._index_in_epoch = 0
         self.reset_indices('all')
         self.reset_rngs()
         self.reset_omits()
@@ -171,7 +171,7 @@ class DataSet(object):
                 self._rng.shuffle(perm)
             else:
                 raise ValueError("Invalid rng type")
-            
+
             self._batch_indices[which_rng] = self._batch_indices[which_rng][perm]
 
             # Start next epoch
@@ -202,27 +202,27 @@ def filter_dataset(X, Y, pos_class, neg_class):
     assert(len(Y.shape) == 1)
 
     Y = Y.astype(int)
-    
+
     pos_idx = Y == pos_class
-    neg_idx = Y == neg_class        
+    neg_idx = Y == neg_class
     Y[pos_idx] = 1
     Y[neg_idx] = -1
     idx_to_keep = pos_idx | neg_idx
     X = X[idx_to_keep, ...]
-    Y = Y[idx_to_keep]    
-    return (X, Y)    
+    Y = Y[idx_to_keep]
+    return (X, Y)
 
 def find_distances(target, X, theta=None):
     assert len(X.shape) == 2, "X must be 2D, but it is currently %s" % len(X.shape)
     target = np.reshape(target, -1)
     assert X.shape[1] == len(target), \
-      "X (%s) and target (%s) must have same feature dimension" % (X.shape[1], len(target))
-    
+        "X (%s) and target (%s) must have same feature dimension" % (X.shape[1], len(target))
+
     if theta is None:
         return np.linalg.norm(X - target, axis=1)
     else:
         theta = np.reshape(theta, -1)
-        
+
         # Project onto theta
         return np.abs((X - target).dot(theta))
 
