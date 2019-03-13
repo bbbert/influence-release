@@ -12,6 +12,8 @@ from experiments.common import Experiment, collect_phases, phase
 import os
 import time
 import numpy as np
+import sklearn
+import sklearn.linear_model
 
 @collect_phases
 class TestLogreg(Experiment):
@@ -33,7 +35,7 @@ class TestLogreg(Experiment):
 
     @property
     def run_id(self):
-        return "run"
+        return "{}".format(self.config['dataset_config']['dataset_id'])
 
     def get_model(self):
         if not hasattr(self, 'model'):
@@ -102,7 +104,37 @@ class TestLogreg(Experiment):
         return { 'indiv_grad_loss': indiv_grad_loss }
 
     @phase(3)
-    def hvp(self):
+    def compare_sklearn(self):
+        model = self.get_model()
+        model.load('initial')
+
+        l2_reg = self.model_config['default_l2_reg']
+        C = 1.0 / l2_reg
+        multi_class = "ovr" if self.model_config['arch']['num_classes'] == 2 else "multinomial"
+        fit_intercept = self.model_config['arch']['fit_intercept']
+        sklearn_model = sklearn.linear_model.LogisticRegression(
+            C=C,
+            tol=1e-8,
+            fit_intercept=fit_intercept,
+            solver='lbfgs',
+            multi_class=multi_class,
+            warm_start=False,
+            max_iter=2048)
+        sklearn_model.intercept_ = 0
+        model.copy_params_to_sklearn_model(sklearn_model)
+
+        preds = model.get_predictions(self.datasets.train)
+        preds_sk = sklearn_model.predict_proba(self.datasets.train.x)
+        print("Diff in predictions: {}".format(
+            np.linalg.norm(preds - preds_sk)))
+
+        result = dict()
+        result['preds'] = preds
+        result['preds_sk'] = preds_sk
+        return result
+
+    @phase(4)
+    def hess(self):
         model = self.get_model()
         model.load('initial')
 
@@ -111,8 +143,15 @@ class TestLogreg(Experiment):
         result['eigs'] = eigs = np.linalg.eigvalsh(result['hessian_reg'])
         print("Hessian eigenvalue range:", np.min(eigs), np.max(eigs))
 
-        indiv_grad_loss = self.results['compute_grad_loss']['indiv_grad_loss']
+        return result
 
+    @phase(5)
+    def hvp(self):
+        model = self.get_model()
+        model.load('initial')
+
+        result = dict()
+        indiv_grad_loss = self.results['compute_grad_loss']['indiv_grad_loss']
         some_indices = [1, 6, 2, 4, 3]
         vectors = indiv_grad_loss[some_indices, :].T
         result['inverse_hvp'] = model.get_inverse_hvp_reg(self.datasets.train, vectors)

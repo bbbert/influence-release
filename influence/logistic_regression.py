@@ -23,10 +23,11 @@ class LogisticRegression(Model):
         self.fit_intercept = self.config['arch']['fit_intercept']
         self.num_classes = self.config['arch']['num_classes']
 
-        self.multi_class = "multinomial"
         if self.num_classes > 2:
+            self.multi_class = "multinomial"
             self.pseudo_num_classes = self.num_classes
         else:
+            self.multi_class = "ovr"
             self.pseudo_num_classes = 1
 
         # Setup input
@@ -72,7 +73,7 @@ class LogisticRegression(Model):
         # all parameters into a flat tensor, then split them up again to obtain
         # phantom parameters and use those in the model.
         # Calculate Hessians
-        self.hessian_reg = tf.hessians(self.total_grad_loss_reg, self.params)[0]
+        self.hessian_reg = tf.hessians(self.total_loss_reg, self.params)[0]
         self.hessian_vector_placeholder = tf.placeholder(
             tf.float32,
             shape=(self.params_flat.shape[0], None),
@@ -370,6 +371,22 @@ class LogisticRegression(Model):
         print('Norm of the mean of gradients: %s' % np.linalg.norm(train_total_grad_loss))
         print('Norm of the params: %s' % np.linalg.norm(params_flat))
 
+    def get_accuracy(self, dataset):
+        accuracy = self.sess.run(self.accuracy, feed_dict={
+            self.input_placeholder: dataset.x,
+            self.labels_placeholder: dataset.labels,
+        })
+        return accuracy
+
+    def get_predictions(self, dataset):
+        sample_weights = np.ones(dataset.x.shape[0])
+        predictions = self.sess.run(self.predictions, feed_dict={
+            self.input_placeholder: dataset.x,
+            self.labels_placeholder: dataset.labels,
+        })
+        return predictions
+
+
     @staticmethod
     def infer_arch(dataset):
         arch = dict()
@@ -386,7 +403,7 @@ class LogisticRegression(Model):
 
             # The L2 regularization to use if not overriden by a keyword
             # argument to model.fit()
-            'default_l2_reg': 100,
+            'default_l2_reg': 1,
 
             'max_lbfgs_iter': 2048,
         }

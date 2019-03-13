@@ -248,21 +248,19 @@ class Experiment(object):
 
     def load_results(self):
         """
-        Loads the results of a previously run experiment. Fails if the results of
-        any phase are missing. Previously loaded/run results will be overwritten.
+        Loads the results of a previously run experiment. Supports partial runs.
+        Previously loaded/run results will be overwritten.
         """
         result_paths = [self.get_result_path(phase.index) for phase in self.PHASES]
-        all_done = all(os.path.exists(result_path) for result_path in result_paths)
-        if not all_done:
-            raise ValueError('Unable to load results. Experiment has not been completely run.')
 
         load_start = time.time()
 
         self.results = dict()
         for phase, result_path in zip(self.PHASES, result_paths):
-            print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
-            print(result_path)
-            self.results[phase.name] = self.load_phase_result(result_path)
+            if os.path.exists(result_path):
+                print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
+                print(result_path)
+                self.results[phase.name] = self.load_phase_result(result_path)
 
         load_time = time.time() - load_start
 

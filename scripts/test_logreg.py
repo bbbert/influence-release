@@ -14,10 +14,12 @@ if __name__ == '__main__':
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
                         help="Ignore previously saved results")
     parser.set_defaults(force_refresh=False)
+    parser.add_argument('--dataset-id', default="hospital", type=str,
+                        help="The dataset to try training on.")
     args = parser.parse_args()
 
     dataset_config = {
-        'dataset_id': 'hospital',
+        'dataset_id': args.dataset_id,
         'center_data': False,
         'append_bias': False,
     }
