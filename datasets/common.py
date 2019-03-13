@@ -10,6 +10,8 @@ import numpy as np
 import copy, warnings
 import tarfile
 
+from tensorflow.contrib.learn.python.learn.datasets import base
+
 """
 The fixed directory (../../data/) to save datasets into.
 """
@@ -35,6 +37,7 @@ def maybe_download(url, filename, download_dir):
     """
     Downloads a file into the specified download directory if it does
     not already exist.
+
     :param url: the web URL to the file
     :param filename: the filename to save it as
     :param download_dir: the directory to download into
@@ -61,60 +64,38 @@ def maybe_download(url, filename, download_dir):
 
 class DataSet(object):
     """
-    Generic DataSet class containing batching and example omission functionality.
+    Generic DataSet class containing batching functionality.
 
     Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
     """
-    # N.B.: omits is a boolean vector where True = omit, False = keep
-    def __init__(self, x, labels, randomState, omits):
+    def __init__(self, x, labels, rng=None, seed=0):
+        """
+        Initializes the dataset.
 
+        :param x: A numpy array representing the features, where the first dimension
+                  is the number of examples. The data will be flattened to a 2-D array
+                  so each example is a row vector.
+        :param labels: A numpy int array representing the labels. The labels will be
+                       flattened to a 1-D array.
+        :param rng: The numpy.random.RandomState to initialize the dataset with. If
+                    None, a new RandomState will be created from the supplied seed.
+        :param seed: The seed to create a new RandomState with, if rng is None.
+        """
+
+        # Flatten x to a 2D array
+        x = x.astype(np.float32)
         if len(x.shape) > 2:
-            x = np.reshape(x, [x.shape[0], -1])
+            x = np.reshape(x, (x.shape[0], -1))
 
+        # Flatten the labels to a 1D array
+        labels = labels.reshape(-1)
+
+        # Ensure they represent the same number of examples
         assert(x.shape[0] == labels.shape[0])
 
-        x = x.astype(np.float32)
-
         self._x = x
-
         self._labels = labels
-        self._num_examples = x.shape[0]
-        self._indices_in_epoch = {}
-        self._batch_indices = {}
-        self.reset_indices('all')
-        self._randomState = randomState
-        self._rng = np.random.RandomState(self._randomState)
-        self._orig_rng = np.random.RandomState(self._randomState)
-        self.reset_clone()
-        self._omits = omits
-
-    def reset_rng(self):
-        self._rng.seed(self._randomState)
-        self.reset_indices('normal')
-
-    def reset_orig(self):
-        self._orig_rng.seed(self._randomState)
-        self.reset_indices('orig')
-
-    def reset_clone(self):
-        self._clone_rng = copy.deepcopy(self._rng)
-        self.reset_indices('clone')
-
-    def reset_rngs(self):
-        self.reset_rng()
-        self.reset_orig()
-        self.reset_clone()
-
-    def reset_indices(self, which_rng):
-        rngs = ['normal', 'orig', 'clone']
-        assert which_rng in ['all'] + rngs
-        if which_rng == 'all':
-            for rng in rngs:
-                self._indices_in_epoch[rng] = 0
-                self._batch_indices[rng] = np.arange(self._num_examples)
-        else:
-            self._indices_in_epoch[which_rng] = 0
-            self._batch_indices[which_rng] = np.arange(self._num_examples)
+        self.initialize_rng(rng=rng, seed=seed)
 
     @property
     def x(self):
@@ -126,72 +107,138 @@ class DataSet(object):
 
     @property
     def num_examples(self):
-        return self._num_examples
+        return self._x.shape[0]
 
-    @property
-    def omits(self):
-        return self._omits
+    def clone(self):
+        """
+        Return an independent copy of this Dataset with the same underlying
+        data and batching state, but keep the new batching state completely
+        independent from the original.
 
-    @property
-    def randomState(self):
-        return self._randomState
+        :return: An independent clone of the DataSet.
+        """
+        copy = DataSet(self._x, self._labels)
+        copy.set_state(self.get_state())
+        return copy
 
-    def set_randomState_and_reset_rngs(self,randomState):
-        self._randomState = randomState
-        self.reset_rngs()
-        self.reset_indices('all')
+    def initialize_indices(self):
+        """
+        Initialize/reinitialize the batching order.
+        """
+        self._index_in_epoch = self.num_examples
+        self._epoch_indices = np.arange(self.num_examples)
 
-    def reset_omits(self):
-        self._omits = np.zeros(self._num_examples, dtype=bool)
+    def initialize_rng(self, rng=None, seed=0):
+        """
+        Initialize/reinitialize the random number generator and also
+        by extension, the batching order.
 
-    def set_omits(self, new_omits):
-        self._omits = new_omits
+        :param rng: The numpy.random.RandomState to initialize the dataset with. If
+                    None, a new RandomState will be created from the supplied seed.
+        :param seed: The seed to create a new RandomState with, if rng is None.
+        """
+        if rng is not None:
+            self._rng = rng
+        else:
+            self._rng = np.random.RandomState(seed)
+        self.initialize_indices()
 
-    def reset_batch(self):
-        raise DeprecationWarning("You probably don't want to reset all: reset_orig for eval funcs and set_omits for overriding/updating")
-        self._index_in_epoch = 0
-        self.reset_indices('all')
-        self.reset_rngs()
-        self.reset_omits()
+    def _get_indices(self, max_indices):
+        """
+        Private helper function to get up to max_indices new randomized examples
+        by their indices. Will return at least one index.
 
-    def next_batch(self, batch_size, which_rng, verbose=False):
-        assert batch_size <= self._num_examples
+        :param max_indices: The maximum number of indices to return
+        :return: A numpy array of indices. Contains at least 1 index.
+        """
 
-        start = self._indices_in_epoch[which_rng]
-        self._indices_in_epoch[which_rng] += batch_size
-        if self._indices_in_epoch[which_rng] > self._num_examples:
+        # Ensure there is at least one more index in the current epoch
+        if self._index_in_epoch == self.num_examples:
+            self._index_in_epoch = 0
+            self._epoch_indices = self._rng.permutation(self.num_examples)
 
-            # Shuffle the data
-            perm = np.arange(self._num_examples)
-            if which_rng == "clone":
-                self._clone_rng.shuffle(perm)
-            elif which_rng == "orig":
-                self._orig_rng.shuffle(perm)
-            elif which_rng == "normal":
-                self._rng.shuffle(perm)
-            else:
-                raise ValueError("Invalid rng type")
+        # Consume as many examples from the current epoch as possible
+        start_index = self._index_in_epoch
+        end_index = min(start_index + max_indices, self.num_examples)
+        self._index_in_epoch = end_index
+        return self._epoch_indices[start_index:end_index]
 
-            self._batch_indices[which_rng] = self._batch_indices[which_rng][perm]
+    def next_batch_indices(self, batch_size):
+        """
+        Get the indices for the next batch of examples.
 
-            # Start next epoch
-            start = 0
-            self._indices_in_epoch[which_rng] = batch_size
+        :param batch_size: The size of the next batch of examples.
+        :return: A (batch_size,) numpy array containing the indices of the next batch.
+        """
+        assert batch_size > 0
 
-        end = self._indices_in_epoch[which_rng]
+        indices = []
+        while len(indices) < batch_size:
+            indices.extend(self._get_indices(batch_size - len(indices)))
+        return np.array(indices)
 
-        # Extract x's and labels from batch_indices
+    def next_batch(self, batch_size):
+        """
+        Get the next batch of examples.
 
-        selected_indices = self._batch_indices[which_rng][start:end]
+        :param batch_size: The size of the next batch of examples.
+        :return: A (batch_size, input dimension) numpy array containing the batch of examples,
+                 and a (batch_size,) numpy array containing the labels for these examples.
+        """
+        indices = self.next_batch_indices(batch_size)
+        return self._x[indices], self._labels[indices]
 
-        selected_indices = selected_indices[~self._omits[selected_indices]]
-        if verbose:
-            print(selected_indices[0])
-        #if len(selected_indices) != batch_size:
-        #    print("Omitted something")
+    def next_batch_with_indices(self, batch_size):
+        """
+        Get the next batch of examples along with their indices.
 
+        :param batch_size: The size of the next batch of examples.
+        :return: A (batch_size, input dimension) numpy array containing the batch of examples,
+                 a (batch_size,) numpy array containing the labels for these examples, and
+                 a (batch_size,) numpy array containing the indices of these examples.
+        """
+        indices = self.next_batch_indices(batch_size)
+        return self._x[indices], self._labels[indices], indices
 
-        return self._x[selected_indices], self._labels[selected_indices]
+    def get_state(self):
+        """
+        Return the full state of this dataset batcher, without the underlying data..
+        :return: A tuple containing the full state of the dataset batcher.
+        """
+        return self._rng.get_state(), self._index_in_epoch, list(self._epoch_indices)
+
+    def set_state(self, state):
+        """
+        Sets the full state of this dataset batcher, without the underlying data.
+        :param state: A tuple containing the full state of the dataset batcher.
+        """
+        rng_state, index_in_epoch, epoch_indices = state
+        assert len(epoch_indices) == self.num_examples
+        self._rng.set_state(rng_state)
+        self._index_in_epoch = index_in_epoch
+        self._epoch_indices = np.array(epoch_indices)
+
+    def save_state(self, state_path):
+        """
+        Saves the full state of this dataset batcher, without the underlying data,
+        into the given path. Uses pickle.
+
+        :param state_path: The path to where the state should be saved.
+        """
+        state = self.get_state()
+        with open(state_path, 'wb') as f:
+            pickle.dump(state, f)
+
+    def load_state(self, state_path):
+        """
+        Loads the full state of this dataset batcher, without the underlying data,
+        from the given path. Uses pickle.
+
+        :param state_path: The path to the state.
+        """
+        with open(state_path, 'rb') as f:
+            state = pickle.load(f)
+        self.set_state(state)
 
 def filter_dataset(X, Y, pos_class, neg_class):
     """
@@ -244,10 +291,10 @@ def append_bias(datasets):
 
     if datasets.train is not None:
         datasets.train._x = append_bias_x(datasets.train._x)
-    if datasets.test is not None:
-        datasets.test._x = append_bias_x(datasets.test._x)
     if datasets.validation is not None:
         datasets.validation._x = append_bias_x(datasets.validation._x)
+    if datasets.test is not None:
+        datasets.test._x = append_bias_x(datasets.test._x)
 
     return datasets
 

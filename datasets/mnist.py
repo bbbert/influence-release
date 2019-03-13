@@ -26,15 +26,15 @@ def extract_images(f):
     print('Extracting', f.name)
     with gzip.GzipFile(fileobj=f) as bytestream:
         magic = _read32(bytestream)
-    if magic != 2051:
-        raise ValueError('Invalid magic number %d in MNIST image file: %s' %
-                         (magic, f.name))
-    num_images = _read32(bytestream)
-    rows = _read32(bytestream)
-    cols = _read32(bytestream)
-    buf = bytestream.read(rows * cols * num_images)
-    data = np.frombuffer(buf, dtype=np.uint8)
-    data = data.reshape(num_images, rows, cols, 1)
+        if magic != 2051:
+            raise ValueError('Invalid magic number %d in MNIST image file: %s' %
+                             (magic, f.name))
+        num_images = _read32(bytestream)
+        rows = _read32(bytestream)
+        cols = _read32(bytestream)
+        buf = bytestream.read(rows * cols * num_images)
+        data = np.frombuffer(buf, dtype=np.uint8)
+        data = data.reshape(num_images, rows, cols, 1)
     return data
 
 def extract_labels(f, one_hot=False, num_classes=10):
@@ -51,12 +51,12 @@ def extract_labels(f, one_hot=False, num_classes=10):
     print('Extracting', f.name)
     with gzip.GzipFile(fileobj=f) as bytestream:
         magic = _read32(bytestream)
-    if magic != 2049:
-        raise ValueError('Invalid magic number %d in MNIST label file: %s' %
-                         (magic, f.name))
-    num_items = _read32(bytestream)
-    buf = bytestream.read(num_items)
-    labels = np.frombuffer(buf, dtype=np.uint8)
+        if magic != 2049:
+            raise ValueError('Invalid magic number %d in MNIST label file: %s' %
+                             (magic, f.name))
+        num_items = _read32(bytestream)
+        buf = bytestream.read(num_items)
+        labels = np.frombuffer(buf, dtype=np.uint8)
     if one_hot:
         return dense_to_one_hot(labels, num_classes)
     return labels

@@ -18,17 +18,17 @@ DEFAULT_OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
 """
 Metadata class for a phase of an experiment.
 """
-ExperimentPhase = namedtuple('Phase', ['name', 'idx', 'priority', 'instancemethod'])
+ExperimentPhase = namedtuple('Phase', ['name', 'index', 'instancemethod'])
 
-def phase(priority=0):
+def phase(index):
     """
     Decorates an instancemethod of an Experiment class to denote
     that it is an experiment phase. The tags will be used by the class
     decorator `collect_phases' to register phases as a class variable.
 
-    :param priority: A priority number for phase.idxing. Phases will be ordered
-                                     in order of high to low priority, and then by order of
-                                     declaration in the class.
+    :param index: The index used to order phases. Phases will be ordered
+                  by index, and then by alphabetical order of the instance
+                  method name. Indices must be unique across phases.
     """
     def decorator(func):
         phase_name = func.__name__
@@ -37,7 +37,7 @@ def phase(priority=0):
             return func(self, *args, **kwargs)
 
         wrapper.is_phase = True
-        wrapper.priority = priority
+        wrapper.index = index
         return wrapper
     return decorator
 
@@ -47,18 +47,20 @@ def collect_phases(cls):
     decorated by `phase' into a class variable PHASES containing
     `ExperimentPhase's in the correct order.
     """
-    phase_attrs = []
+    phases = []
     for attrname in dir(cls):
         attr = getattr(cls, attrname)
         if hasattr(attr, 'is_phase') and attr.is_phase:
-            idx = 0
-            while idx < len(phase_attrs) and phase_attrs[idx][0] >= attr.priority:
-                idx += 1
-            phase_attrs.insert(idx, (attr.priority, attrname))
+            phases.append((attr.index, attrname))
+    phases.sort()
 
-    cls.PHASES = [ExperimentPhase(phase_attr[1], i, phase_attr[0],
-                                  getattr(cls, phase_attr[1]))
-                  for i, phase_attr in enumerate(phase_attrs)]
+    cls.PHASES = [ExperimentPhase(attrname, index,
+                                  getattr(cls, attrname))
+                  for index, attrname in phases]
+
+    # Support non-contiguous indices
+    cls.PHASE_BY_INDEX = { phase.index: phase for phase in cls.PHASES }
+
     return cls
 
 @collect_phases
@@ -93,6 +95,11 @@ class Experiment(object):
         """
         Return the experiment base directory given the output directory,
         experiment id and run id. Also ensures that the directory exists.
+
+        :param out_dir: The output directory for all experiments.
+        :param experiment_id: The unique experiment id.
+        :param run_id: The unique run id within this experiment.
+        :return: The path to the base directory for this run.
         """
         base_dir = os.path.join(out_dir, experiment_id, run_id)
         if not os.path.exists(base_dir):
@@ -113,9 +120,10 @@ class Experiment(object):
         Returns the path to save the result of a phase in.
 
         :param phase_index: The index of the phase in PHASES.
+        :return: The path to the result.
         """
-        phase = self.PHASES[phase_index]
-        result_name = "result_{}-{}.npz".format(phase.idx, phase.name)
+        phase = self.PHASE_BY_INDEX[phase_index]
+        result_name = "result_{}-{}.npz".format(phase.index, phase.name)
         result_path = os.path.join(self.base_dir, result_name)
         return result_path
 
@@ -125,6 +133,7 @@ class Experiment(object):
         Returns the path to the saved config, given the base dir.
 
         :param base_dir: The base directory
+        :return: The path to the saved config
         """
         return os.path.join(base_dir, 'config.pickle')
 
@@ -142,6 +151,7 @@ class Experiment(object):
         of the phase itself because results are constrained to be homogenous.
 
         :param result_path: The path to the result.
+        :return: The result dictionary.
         """
         data = np.load(result_path)
         result = dict(data)
@@ -167,6 +177,7 @@ class Experiment(object):
         Loads a config from the given path.
 
         :param config_path: The path to the config.
+        :return: The saved config dict.
         """
         with open(config_path, 'rb') as f:
             config = pickle.load(f)
@@ -205,19 +216,19 @@ class Experiment(object):
 
         self.results = dict()
         for phase in self.PHASES:
-            result_path = self.get_result_path(phase.idx)
+            result_path = self.get_result_path(phase.index)
 
             if not force_refresh and os.path.exists(result_path):
-                print("Loading phase {}-{} from previous run:".format(phase.idx, phase.name))
+                print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
                 print(result_path)
                 result = self.load_phase_result(result_path)
             else:
-                print("Running phase {}-{}...".format(phase.idx, phase.name))
+                print("Running phase {}-{}...".format(phase.index, phase.name))
 
                 phase_start = time.time()
                 result = phase.instancemethod(self)
                 phase_time = time.time() - phase_start
-                print("Phase {}-{} took {} seconds".format(phase.idx, phase.name, phase_time))
+                print("Phase {}-{} took {} seconds".format(phase.index, phase.name, phase_time))
 
                 if not isinstance(result, dict):
                     raise ValueError('Experiment phases should return dictionaries.')
@@ -226,7 +237,7 @@ class Experiment(object):
             self.results[phase.name] = result
             print()
 
-            if stop_after_phase is not None and phase.idx == stop_after_phase:
+            if stop_after_phase is not None and phase.index == stop_after_phase:
                 break
 
         exp_time = time.time() - exp_start
@@ -240,7 +251,7 @@ class Experiment(object):
         Loads the results of a previously run experiment. Fails if the results of
         any phase are missing. Previously loaded/run results will be overwritten.
         """
-        result_paths = [self.get_result_path(phase.idx) for phase in self.PHASES]
+        result_paths = [self.get_result_path(phase.index) for phase in self.PHASES]
         all_done = all(os.path.exists(result_path) for result_path in result_paths)
         if not all_done:
             raise ValueError('Unable to load results. Experiment has not been completely run.')
@@ -249,7 +260,7 @@ class Experiment(object):
 
         self.results = dict()
         for phase, result_path in zip(self.PHASES, result_paths):
-            print("Loading phase {}-{} from previous run:".format(phase.idx, phase.name))
+            print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
             print(result_path)
             self.results[phase.name] = self.load_phase_result(result_path)
 
@@ -268,6 +279,7 @@ class Experiment(object):
         :param run_id: The unique run_id to load
         :param out_dir: The directory that the experiment's results are saved in.
                                         If None, defaults to DEFAULT_OUT_DIR.
+        :return: An Experiment of this type with all previously saved data loaded.
         """
         out_dir = out_dir if out_dir is not None else DEFAULT_OUT_DIR
         config_path = cls.get_config_path(cls.get_base_dir(out_dir, cls.experiment_id, run_id))
@@ -292,19 +304,19 @@ class TestExperiment(Experiment):
 
     # The final phase order is bar, then foo, then foo_bar.
 
-    @phase()
+    @phase(1)
     def foo(self):
         print("foo")
         return { 'foo_result': 3, 'foo_dict': { 'key': 'value' } }
 
-    @phase()
+    @phase(2)
     def foo_bar(self):
         print("foo_bar")
         # Phases can depend on the results of previous phases.
         return { 'foo_bar': self.results['foo']['foo_result'] * self.results['bar']['bar'] }
 
-    @phase(priority=1)
+    @phase(0)
     def bar(self):
-        # This phase is run before foo because of its priority
+        # This phase is run before foo because of its index
         print("bar")
         return { 'bar': np.random.normal((5, 5)) }

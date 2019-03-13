@@ -7,7 +7,7 @@ from __future__ import unicode_literals
 
 import os
 import numpy as np
-import cPickle as pickle
+import pickle
 import urllib
 import zipfile, tarfile
 
