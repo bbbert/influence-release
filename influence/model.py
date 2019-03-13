@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 
 import os
+import pickle
 import numpy as np
 import tensorflow as tf
 
@@ -34,7 +35,12 @@ class Model(object):
         :param model_dir: The base directory to save the model into.
         """
         self.config = config
-        self.set_model_dir(model_dir)
+        self.model_dir = model_dir if model_dir is not None else DEFAULT_MODEL_DIR
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+        if not os.path.isdir(self.model_dir):
+            raise Exception('{} already exists but is not a directory.'.format(self.model_dir))
+        Model.save_config(self.config_path, self.config)
 
         self.initialize_session()
         self.build_graph()
@@ -44,17 +50,9 @@ class Model(object):
     def __del__(self):
         self.sess.close()
 
-    def set_model_dir(self, model_dir):
-        """
-        Set the model directory and ensure it exists.
-
-        :param model_dir: The base directory to save the model into.
-        """
-        self.model_dir = model_dir if model_dir is not None else DEFAULT_MODEL_DIR
-        if not os.path.exists(self.model_dir):
-            os.makedirs(self.model_dir)
-        if not os.path.isdir(self.model_dir):
-            raise Exception('{} already exists but is not a directory.'.format(self.model_dir))
+    @property
+    def config_path(self):
+        return os.path.join(self.model_dir, 'model_config.pickle')
 
     def initialize_session(self):
         """
@@ -91,7 +89,8 @@ class Model(object):
 
     def save(self, state_id, global_step=None):
         """
-        Saves the model to the subdirectory state_id in model_dir.
+        Saves the model state (parameters and other tensorflow state)
+        to the subdirectory state_id in model_dir.
 
         :param state_id: A string uniquely addressing this model state.
         """
@@ -104,7 +103,8 @@ class Model(object):
 
     def load(self, state_id, global_step=None):
         """
-        Loads the model from the subdirectory state_id in model_dir.
+        Loads the model state (parameters and other tensorflow state)
+        from the subdirectory state_id in model_dir.
 
         :param state_id: A string uniquely addressing this model state.
         """
@@ -112,6 +112,29 @@ class Model(object):
         if global_step is not None:
             save_path = "{}-{}".format(save_path, global_step)
         self.saver.restore(self.sess, save_path)
+
+    @staticmethod
+    def load_config(config_path):
+        """
+        Loads a model_config from the given path.
+
+        :param config_path: The path to the config.
+        :return: The saved config dict.
+        """
+        with open(config_path, 'rb') as f:
+            config = pickle.load(f)
+        return config
+
+    @staticmethod
+    def save_config(config_path, model_config):
+        """
+        Saves a model_config into the given path. Configs are saved using pickle.
+
+        :param config_path: The path to the config.
+        :param model_config: A dictionary representing all configuration for this experiment.
+        """
+        with open(config_path, 'wb') as f:
+            pickle.dump(model_config, f)
 
     def get_params(self):
         raise NotImplementedError()

@@ -8,7 +8,7 @@ import argparse
 from experiments.test_logreg import TestLogreg
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run a test experiment.')
+    parser = argparse.ArgumentParser(description='Run logistic regression')
     parser.add_argument('--out_dir', default=None, type=str,
                         help="The experiment output directory")
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
