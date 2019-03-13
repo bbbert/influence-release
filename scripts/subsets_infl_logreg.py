@@ -41,6 +41,7 @@ if __name__ == "__main__":
         'cross_validation_folds': 5,
         'normalized_cross_validation_range': {
             'hospital': (1e-4, 1e-1, 10),
+            'mnist_small': (1e-3, 1, 4),
         }[args.dataset_id],
     }
 
