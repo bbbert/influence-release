@@ -16,6 +16,9 @@ if __name__ == '__main__':
     parser.set_defaults(force_refresh=False)
     parser.add_argument('--dataset-id', default="hospital", type=str,
                         help="The dataset to try training on.")
+    parser.add_argument('--fit-intercept', dest="fit_intercept", action='store_true',
+                        help="Fit intercept")
+    parser.set_defaults(fit_intercept=False)
     args = parser.parse_args()
 
     dataset_config = {
@@ -25,6 +28,7 @@ if __name__ == '__main__':
     }
     config = {
         'dataset_config': dataset_config,
+        'fit_intercept': args.fit_intercept,
     }
     force_refresh = args.force_refresh
 

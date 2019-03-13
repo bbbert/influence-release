@@ -53,33 +53,61 @@ class LogisticRegression(Model):
         self.logits, self.params = self.infer(self.input_placeholder, self.labels_placeholder)
         self.params_assigners = get_assigners(self.params)
         self.params_flat = flatten(self.params)
+        self.one_hot_labels = tf.one_hot(self.labels_placeholder, depth=self.num_classes)
         self.total_loss_reg, self.total_loss_no_reg, self.indiv_loss = self.loss(
             self.logits,
-            self.labels_placeholder,
+            self.one_hot_labels,
             self.sample_weights_placeholder)
         self.predictions = self.predict(self.logits)
         self.accuracy = get_accuracy(self.logits, self.labels_placeholder)
 
+        # Setup margins, but only for binary logistic regression
+        if self.num_classes == 2:
+            y = tf.cast(self.labels_placeholder, tf.float32) * 2 - 1
+            self.margins = tf.multiply(y, self.logits[:, 1])
+            margin_input = self.input_placeholder
+            if self.fit_intercept:
+                margin_input = tf.pad(margin_input, [[0, 0], [0, 1]],
+                                      mode="CONSTANT", constant_values=1.0)
+            self.indiv_grad_margin = tf.multiply(
+                margin_input,
+                tf.expand_dims(y * self.sample_weights_placeholder, 1))
+            self.total_grad_margin = tf.reduce_sum(self.indiv_grad_margin, axis=0)
+
+        # Calculate gradients explicitly
+        self.gradients(self.input_placeholder,
+                       self.logits,
+                       self.one_hot_labels,
+                       self.sample_weights_placeholder)
+
         # Calculate gradients
-        self.indiv_grad_loss = tf.gradients(self.indiv_loss, self.params)
-        self.total_grad_loss_reg = tf.gradients(self.total_loss_reg, self.params)
-        self.total_grad_loss_no_reg = tf.gradients(self.total_loss_no_reg, self.params)
+        # self.total_grad_loss_reg = tf.gradients(self.total_loss_reg, self.params)
+        # self.total_grad_loss_no_reg = tf.gradients(self.total_loss_no_reg, self.params)
+        # self.total_grad_loss_reg_flat = flatten(self.total_grad_loss_reg)
+        # self.total_grad_loss_no_reg_flat = flatten(self.total_grad_loss_no_reg)
 
-        self.indiv_grad_loss_flat = flatten(self.indiv_grad_loss)
-        self.total_grad_loss_reg_flat = flatten(self.total_grad_loss_reg)
-        self.total_grad_loss_no_reg_flat = flatten(self.total_grad_loss_no_reg)
+        # Calculate gradients explicitly
+        self.hessian(self.input_placeholder,
+                     self.logits,
+                     self.sample_weights_placeholder)
 
-        # TODO: This only works for a single parameter. To fix, concatenate
+        # This only works for a single parameter. To fix, concatenate
         # all parameters into a flat tensor, then split them up again to obtain
         # phantom parameters and use those in the model.
         # Calculate Hessians
-        self.hessian_reg = tf.hessians(self.total_loss_reg, self.params)[0]
-        self.hessian_vector_placeholder = tf.placeholder(
+        # if not self.fit_intercept:
+            # self.hessian_reg = tf.hessians(self.total_loss_reg, self.params)[0]
+
+        self.matrix_placeholder = tf.placeholder(
+            tf.float32,
+            shape=(self.params_flat.shape[0], self.params_flat.shape[0]),
+            name='matrix_placeholder')
+        self.vectors_placeholder = tf.placeholder(
             tf.float32,
             shape=(self.params_flat.shape[0], None),
-            name='hessian_vector_placeholder')
-        self.inverse_hvp = tf.cholesky_solve(tf.cholesky(self.hessian_reg),
-                                             self.hessian_vector_placeholder)
+            name='vectors_placeholder')
+        self.inverse_vp = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
+                                            self.vectors_placeholder)
 
     def infer(self, input, labels):
         params = []
@@ -111,9 +139,9 @@ class LogisticRegression(Model):
 
         return logits, params
 
-    def loss(self, logits, labels, sample_weights):
-        labels = tf.one_hot(labels, depth=self.num_classes)
-        cross_entropy = -tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), axis=1)
+    def loss(self, logits, one_hot_labels, sample_weights):
+        log_softmax = tf.nn.log_softmax(logits)
+        cross_entropy = -tf.reduce_sum(tf.multiply(one_hot_labels, log_softmax), axis=1)
 
         indiv_loss = cross_entropy
         total_loss_no_reg = tf.reduce_sum(tf.multiply(cross_entropy, sample_weights),
@@ -123,6 +151,98 @@ class LogisticRegression(Model):
         total_loss_reg = tf.add_n(tf.get_collection('losses'), name='total_loss_reg')
 
         return total_loss_reg, total_loss_no_reg, indiv_loss
+
+    def gradients(self, inputs, logits, one_hot_labels, sample_weights):
+        """
+        Explicitly computes the softmax gradients.
+
+        grad_theta_i loss(x, y) = -([i == y] - softmax_i) * x
+        grad_b_i loss(x, y) = -([i == y] - softmax_i)
+        """
+        K, Kp, D = self.num_classes, self.pseudo_num_classes, self.input_dim
+        KpD = Kp * D
+
+        # Gradient of loss
+        softmax = tf.nn.softmax(logits)
+        factor = -(one_hot_labels - softmax)           # (?, K)
+        if self.num_classes == 2:
+            # Pick only weights for the second class
+            factor = factor[:, 1:2]                    # (?, Kp)
+        expand_factor = tf.expand_dims(factor, axis=2) # (?, Kp, 1)
+        expand_inputs = tf.expand_dims(inputs, 1)      # (?, 1, D)
+        indiv_grad_loss = tf.reshape(tf.multiply(expand_factor, expand_inputs),
+                                     (-1, KpD))
+
+        # Gradient of l2 regularization
+        grad_reg = self.l2_reg * tf.ones(KpD)
+
+        # Handle bias term
+        if self.fit_intercept:
+            indiv_grad_loss = tf.concat([indiv_grad_loss, factor], axis=1) # (?, KpD + Kp)
+            grad_reg = tf.pad(grad_reg, [[0, Kp]],
+                              mode="CONSTANT", constant_values=0.0)
+
+        # Compute grad losses
+        self.indiv_grad_loss = indiv_grad_loss
+        weighted_grad_loss = tf.multiply(indiv_grad_loss,
+                                         tf.expand_dims(sample_weights, 1))
+        self.total_grad_loss_no_reg_flat = tf.reduce_sum(weighted_grad_loss, axis=0)
+        self.total_grad_loss_reg_flat = self.total_grad_loss_no_reg_flat + grad_reg
+
+        # Separate weights and biases
+        self.total_grad_loss_no_reg = [self.total_grad_loss_no_reg_flat[:KpD],
+                                       self.total_grad_loss_no_reg_flat[KpD:]]
+        self.total_grad_loss_reg = [self.total_grad_loss_reg_flat[:KpD],
+                                    self.total_grad_loss_reg_flat[KpD:]]
+
+    def hessian(self, inputs, logits, sample_weights):
+        """
+        Explicitly computes the softmax hessian.
+
+        grad_theta_i grad_theta_j loss(x, y)
+            = softmax_i ([i == j] - softmax_j) x x^T
+        grad_theta_i grad_b_j loss(x, y)
+            = softmax_i ([i == j] - softmax_j) x
+        grad_b_i grad_b_j loss(x, y)
+            = softmax_i ([i == j] - softmax_j)
+        """
+        K, Kp, D = self.num_classes, self.pseudo_num_classes, self.input_dim
+        KpD = Kp * D
+
+        softmax = tf.nn.softmax(logits)                     # (?, K)
+        if self.num_classes == 2:
+            softmax = softmax[:, 1:2]                       # (?, Kp)
+        factor = tf.linalg.diag(softmax) - \
+            tf.multiply(tf.expand_dims(softmax, 1),
+                        tf.expand_dims(softmax, 2))         # (?, Kp, Kp)
+        outers = tf.multiply(tf.expand_dims(inputs, 1),
+                             tf.expand_dims(inputs, 2))     # (?, D,  D)
+
+        ee_factor = tf.expand_dims(tf.expand_dims(factor, 2), 4) # (?, Kp, 1, Kp, 1)
+        ee_outers = tf.expand_dims(tf.expand_dims(outers, 1), 3) # (?, 1,  D, 1,  D)
+        indiv_hessian = tf.reshape(tf.multiply(ee_factor, ee_outers),
+                                   (-1, KpD, KpD))
+
+        # Hessian of l2 regularization
+        hess_reg = self.l2_reg * tf.eye(KpD, KpD)
+
+        if self.fit_intercept:
+            e_factor = tf.expand_dims(factor, 3)                    # (?, Kp, Kp, 1)
+            e_inputs = tf.expand_dims(tf.expand_dims(inputs, 1), 2) # (?, 1,  1,  D)
+            off_diag = tf.reshape(tf.multiply(e_factor, e_inputs),
+                                  (-1, Kp, KpD))
+
+            top_row = tf.concat([indiv_hessian,
+                                 tf.transpose(off_diag, (0, 2, 1))], axis=2)
+            bottom_row = tf.concat([off_diag, factor], axis=2)
+            indiv_hessian = tf.concat([top_row, bottom_row], axis=1)
+
+            hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
+                              mode="CONSTANT", constant_values=0.0)
+
+        self.hessian_no_reg = tf.reduce_sum(indiv_hessian, axis=0)
+        self.hessian_reg = self.hessian_no_reg + hess_reg
+        self.hessian_of_reg = hess_reg
 
     def predict(self, logits):
         predictions = tf.nn.softmax(logits, name='predictions')
@@ -238,6 +358,8 @@ class LogisticRegression(Model):
 
         self.set_params(params)
 
+    # Extracting information
+
     def get_total_loss(self, dataset, sample_weights=None, reg=False, **kwargs):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
@@ -282,16 +404,34 @@ class LogisticRegression(Model):
         return grad_loss
 
     def get_indiv_grad_loss(self, dataset, **kwargs):
-        # TODO: replace with batching implementation
-        indiv_grad_loss = []
-        for i in range(dataset.num_examples):
-            grad_loss = self.sess.run(self.total_grad_loss_no_reg_flat, feed_dict={
-                self.input_placeholder: dataset.x[[i], :],
-                self.labels_placeholder: dataset.labels[[i]],
-                self.sample_weights_placeholder: [1],
+        method = kwargs.get('method', 'batched')
+
+        if method == "batched":
+            # This works only when we can explicitly compute the individual gradients
+            return self.get_indiv_grad_loss_batched(dataset, **kwargs)
+        elif method == "from_total_grad":
+            # The default method
+            return self.get_indiv_grad_loss_from_total_grad(dataset, **kwargs)
+        else:
+            raise ValueError('Unknown method {}'.format(method))
+
+    def get_indiv_grad_loss_batched(self, dataset, **kwargs):
+        if not hasattr(self, 'indiv_grad_loss'):
+            raise Exception('Batched gradient evaluation not supported')
+
+        batch_size = kwargs.get('grad_batch_size', 256)
+        indiv_grad_losses = []
+        for i in range(0, dataset.num_examples, batch_size):
+            print("\rGradients computed: {}/{}".format(i, dataset.num_examples), end="")
+            end = min(i + batch_size, dataset.num_examples)
+            indiv_grad_loss = self.sess.run(self.indiv_grad_loss, feed_dict={
+                self.input_placeholder: dataset.x[i:end, :],
+                self.labels_placeholder: dataset.labels[i:end],
             })
-            indiv_grad_loss.append(grad_loss)
-        return np.array(indiv_grad_loss)
+            print("\rGradients computed: {}/{}".format(end, dataset.num_examples), end="")
+            indiv_grad_losses.append(indiv_grad_loss)
+        print()
+        return np.vstack(indiv_grad_losses)
 
     def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
         l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
@@ -300,11 +440,19 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        hessian_reg = self.sess.run(self.hessian_reg, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-            self.sample_weights_placeholder: sample_weights,
-        })
+        batch_size = kwargs.get('hess_batch_size', 256)
+        hessian_reg = self.sess.run(self.hessian_of_reg)
+        for i in range(0, dataset.num_examples, batch_size):
+            print("\rHessians computed: {}/{}".format(i, dataset.num_examples), end="")
+            end = min(i + batch_size, dataset.num_examples)
+            hessian = self.sess.run(self.hessian_no_reg, feed_dict={
+                self.input_placeholder: dataset.x[i:end, :],
+                self.labels_placeholder: dataset.labels[i:end],
+                self.sample_weights_placeholder: sample_weights[i:end],
+            })
+            print("\rHessians computed: {}/{}".format(end, dataset.num_examples), end="")
+            hessian_reg += hessian
+        print()
         return hessian_reg
 
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
@@ -317,22 +465,43 @@ class LogisticRegression(Model):
         :param sample_weights: The sample weights for the dataset.
         :return: A (D, K) numpy array = hessian^{-1} vectors
         """
-        assert len(self.params) == 1, "more than 1 parameter not yet supported"
         assert vectors.shape[0] == self.params_flat.shape[0]
 
-        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-        self.set_l2_reg(l2_reg)
+        hessian_reg = self.get_hessian_reg(dataset, sample_weights, **kwargs)
+        return self.get_inverse_vp(self, hessian_reg, vectors, **kwargs)
+
+    def get_inverse_vp(self, matrix, vectors, **kwargs):
+        inverse_vp = self.sess.run(self.inverse_vp, feed_dict={
+            self.matrix_placeholder: matrix,
+            self.vectors_placeholder: vectors,
+        })
+        return inverse_vp
+
+    # Margins (only for binary classification)
+
+    def get_indiv_margin(self, dataset, **kwargs):
+        assert self.num_classes == 2, "Margins only supported for binary classification"
+
+        indiv_margin = self.sess.run(self.margins, feed_dict={
+            self.input_placeholder: dataset.x,
+            self.labels_placeholder: dataset.labels,
+        })
+        return indiv_margin
+
+    def get_total_grad_margin(self, dataset, sample_weights=None, **kwargs):
+        assert self.num_classes == 2, "Margins only supported for binary classification"
 
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        inverse_hvp = self.sess.run(self.inverse_hvp, feed_dict={
+        grad_margin = self.sess.run(self.total_grad_margin, feed_dict={
             self.input_placeholder: dataset.x,
             self.labels_placeholder: dataset.labels,
             self.sample_weights_placeholder: sample_weights,
-            self.hessian_vector_placeholder: vectors,
         })
-        return inverse_hvp
+        return grad_margin
+
+    # Evaluation
 
     def print_model_eval(self, datasets):
         params_flat = self.get_params_flat()

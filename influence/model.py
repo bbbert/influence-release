@@ -7,6 +7,8 @@ import os
 import numpy as np
 import tensorflow as tf
 
+from datasets.common import DataSet
+
 DEFAULT_MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                                  '..', 'output', 'models'))
 
@@ -38,6 +40,9 @@ class Model(object):
         self.build_graph()
         self.saver = tf.train.Saver()
         self.sess.run(tf.global_variables_initializer())
+
+    def __del__(self):
+        self.sess.close()
 
     def set_model_dir(self, model_dir):
         """
@@ -125,6 +130,16 @@ class Model(object):
 
     def get_indiv_grad_loss(self, dataset, **kwargs):
         raise NotImplementedError()
+
+    def get_indiv_grad_loss_from_total_grad(self, dataset, **kwargs):
+        indiv_grad_loss = []
+        for i in range(dataset.num_examples):
+            singleton_dataset = DataSet(dataset.x[[i], :],
+                                        dataset.labels[[i]])
+            grad_loss = self.get_total_grad_loss(singleton_dataset,
+                                                 **kwargs)
+            indiv_grad_loss.append(grad_loss)
+        return np.array(indiv_grad_loss)
 
     @staticmethod
     def infer_arch(dataset):
