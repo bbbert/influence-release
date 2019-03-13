@@ -196,15 +196,15 @@ class Experiment(object):
 
     def run(self,
             force_refresh=False,
-            stop_after_phase=None):
+            invalidate_phase=None):
         """
         Runs all phases of the experiment, skipping phases that have already
         been run if possible, and if desired. Previous results will be overwritten.
 
         :param force_refresh: If False, phases with previously saved results will be loaded
-                                                    and skipped. Otherwise, every phase will be re-run.
-        :param stop_after_phase: If not None, the experiment will be truncated after this
-                                                         phase index for development convenience.
+                              and skipped. Otherwise, every phase will be re-run.
+        :param invalidate_phase: If not None, every phase including and after this
+                                 phase index will be re-run.
         """
         print("Experiment {}: running {}".format(self.experiment_id, self.run_id))
         print("Results will be stored in {}".format(self.base_dir))
@@ -214,11 +214,12 @@ class Experiment(object):
 
         exp_start = time.time()
 
-        self.results = dict()
+        self.results, self.R = dict(), dict()
         for phase in self.PHASES:
             result_path = self.get_result_path(phase.index)
 
-            if not force_refresh and os.path.exists(result_path):
+            invalidated = invalidate_phase is not None and phase.index >= invalidate_phase
+            if not force_refresh and not invalidated and os.path.exists(result_path):
                 print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
                 print(result_path)
                 result = self.load_phase_result(result_path)
@@ -235,10 +236,8 @@ class Experiment(object):
                 self.save_phase_result(result_path, result)
 
             self.results[phase.name] = result
+            self.R.update(result)
             print()
-
-            if stop_after_phase is not None and phase.index == stop_after_phase:
-                break
 
         exp_time = time.time() - exp_start
 
@@ -255,12 +254,13 @@ class Experiment(object):
 
         load_start = time.time()
 
-        self.results = dict()
+        self.results, self.R = dict(), dict()
         for phase, result_path in zip(self.PHASES, result_paths):
             if os.path.exists(result_path):
                 print("Loading phase {}-{} from previous run:".format(phase.index, phase.name))
                 print(result_path)
                 self.results[phase.name] = self.load_phase_result(result_path)
+                self.R.update(self.results[phase.name])
 
         load_time = time.time() - load_start
 

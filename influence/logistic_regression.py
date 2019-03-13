@@ -104,10 +104,10 @@ class LogisticRegression(Model):
             name='matrix_placeholder')
         self.vectors_placeholder = tf.placeholder(
             tf.float32,
-            shape=(self.params_flat.shape[0], None),
+            shape=(None, self.params_flat.shape[0]),
             name='vectors_placeholder')
         self.inverse_vp = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
-                                            self.vectors_placeholder)
+                                            tf.transpose(self.vectors_placeholder))
 
     def infer(self, input, labels):
         params = []
@@ -473,7 +473,7 @@ class LogisticRegression(Model):
     def get_inverse_vp(self, matrix, vectors, **kwargs):
         inverse_vp = self.sess.run(self.inverse_vp, feed_dict={
             self.matrix_placeholder: matrix,
-            self.vectors_placeholder: vectors,
+            self.vectors_placeholder: vectors.T,
         })
         return inverse_vp
 

@@ -121,6 +121,19 @@ class DataSet(object):
         copy.set_state(self.get_state())
         return copy
 
+    def subset(self, indices, rng=None, seed=0):
+        """
+        Return a subset of this Dataset.
+
+        :param indices: The example indices to keep, in the order they will
+                        be in the new dataset.
+        :return: A new dataset
+        :param rng: The numpy.random.RandomState to initialize the dataset with. If
+                    None, a new RandomState will be created from the supplied seed.
+        :param seed: The seed to create a new RandomState with, if rng is None.
+        """
+        return DataSet(self._x[indices], self._labels[indices], rng=rng, seed=seed)
+
     def initialize_indices(self):
         """
         Initialize/reinitialize the batching order.
