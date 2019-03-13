@@ -123,7 +123,7 @@ class TestLogreg(Experiment):
         sklearn_model.intercept_ = 0
         model.copy_params_to_sklearn_model(sklearn_model)
 
-        preds = model.get_predictions(self.datasets.train)
+        preds = model.get_predictions(self.datasets.train.x)
         preds_sk = sklearn_model.predict_proba(self.datasets.train.x)
         print("Diff in predictions: {}".format(
             np.linalg.norm(preds - preds_sk)))

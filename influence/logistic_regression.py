@@ -116,7 +116,8 @@ class LogisticRegression(Model):
         cross_entropy = -tf.reduce_sum(tf.multiply(labels, tf.nn.log_softmax(logits)), axis=1)
 
         indiv_loss = cross_entropy
-        total_loss_no_reg = tf.reduce_sum(cross_entropy, name='total_loss_no_reg')
+        total_loss_no_reg = tf.reduce_sum(tf.multiply(cross_entropy, sample_weights),
+                                          name='total_loss_no_reg')
         tf.add_to_collection('losses', total_loss_no_reg)
 
         total_loss_reg = tf.add_n(tf.get_collection('losses'), name='total_loss_reg')
@@ -360,15 +361,18 @@ class LogisticRegression(Model):
                 self.sample_weights_placeholder: np.ones(datasets.train.x.shape[0]),
             })
 
+        print('Train loss (w reg) on all data: %s' %
+              (train_loss_reg / datasets.train.num_examples))
+        print('Train loss (w/o reg) on all data: %s' %
+              (train_loss_no_reg / datasets.train.num_examples))
 
-        print('Train loss (w reg) on all data: %s' % train_loss_reg)
-        print('Train loss (w/o reg) on all data: %s' % train_loss_no_reg)
-
-        print('Test loss (w/o reg) on all data: %s' % test_loss_no_reg)
+        print('Test loss (w/o reg) on all data: %s' %
+              (test_loss_no_reg / datasets.test.num_examples))
         print('Train acc on all data:  %s' % train_acc)
         print('Test acc on all data:   %s' % test_acc)
 
-        print('Norm of the mean of gradients: %s' % np.linalg.norm(train_total_grad_loss))
+        print('Norm of the mean of gradients: %s' %
+              (np.linalg.norm(train_total_grad_loss) / datasets.train.num_examples))
         print('Norm of the params: %s' % np.linalg.norm(params_flat))
 
     def get_accuracy(self, dataset):
@@ -378,14 +382,12 @@ class LogisticRegression(Model):
         })
         return accuracy
 
-    def get_predictions(self, dataset):
-        sample_weights = np.ones(dataset.x.shape[0])
+    def get_predictions(self, X):
+        sample_weights = np.ones(X.shape[0])
         predictions = self.sess.run(self.predictions, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
+            self.input_placeholder: X
         })
         return predictions
-
 
     @staticmethod
     def infer_arch(dataset):
