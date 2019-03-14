@@ -101,6 +101,10 @@ class Model(object):
                         global_step=global_step,
                         latest_filename=checkpoint_path)
 
+        # Empty out the old checkpoints list so the next checkpoint file
+        # does not contain previous saves
+        self.saver.set_last_checkpoints_with_time([])
+
     def load(self, state_id, global_step=None):
         """
         Loads the model state (parameters and other tensorflow state)

@@ -160,7 +160,8 @@ class SubsetInfluenceLogreg(Experiment):
         res = dict()
 
         with benchmark("Computing hessian"):
-            res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg)
+            res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg,
+                                                             **self.eval_args)
 
         fixed_test = self.R['fixed_test']
         fixed_test_pred_infl = []
