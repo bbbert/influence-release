@@ -13,6 +13,8 @@ from influence.inception_v3 import preprocess_input
 
 BASE_DIR = 'data' # TODO: change
 
+# THIS FILE HAS NOT BEEN UPDATED
+
 def fill(X, Y, idx, label, img_path, img_side):
     img = image.load_img(img_path, target_size=(img_side, img_side))
     x = image.img_to_array(img)

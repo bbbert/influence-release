@@ -272,7 +272,9 @@ class Experiment(object):
     def load_run(cls, run_id, out_dir=None):
         """
         Loads a previously run experiment.
-        Fails if the saved config or the results of any phase are missing.
+        Fails if config is missing.
+        Not yet configured to fail if any of the phases are missing,
+        i.e. may contain only partial results.
 
         :param run_id: The unique run_id to load
         :param out_dir: The directory that the experiment's results are saved in.

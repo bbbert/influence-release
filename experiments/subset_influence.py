@@ -3,13 +3,14 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-from influence.logistic_regression import LogisticRegression
+
 import datasets as ds
 import datasets.loader
 import datasets.mnist
 from datasets.common import DataSet
 from experiments.common import Experiment, collect_phases, phase
 from experiments.benchmark import benchmark
+from influence.logistic_regression import LogisticRegression
 
 import os
 import time

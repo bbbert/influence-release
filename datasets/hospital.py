@@ -162,14 +162,14 @@ def load_hospital():
         Y_test = data['Y_test']
         lr_Y_test = data['lr_Y_test']
 
-    train = DataSet(X_train, Y_train, 0, np.zeros(len(X_train), dtype=bool))
+    train = DataSet(X_train, Y_train)
     validation = None
-    test = DataSet(X_test, Y_test, 0, np.zeros(len(X_test), dtype=bool))
+    test = DataSet(X_test, Y_test)
     data_sets = base.Datasets(train=train, validation=validation, test=test)
 
-    lr_train = DataSet(X_train, lr_Y_train, 0, np.zeros(len(X_train), dtype=bool))
+    lr_train = DataSet(X_train, lr_Y_train)
     lr_validation = None
-    lr_test = DataSet(X_test, lr_Y_test, 0, np.zeros(len(X_test), dtype=bool))
+    lr_test = DataSet(X_test, lr_Y_test)
     lr_data_sets = base.Datasets(train=lr_train, validation=lr_validation, test=lr_test)
 
     return lr_data_sets

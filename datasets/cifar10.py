@@ -107,9 +107,9 @@ def load_cifar10(validation_size=1000):
         test_images = data['test_images']
         test_labels = data['test_labels']
 
-    train = DataSet(train_images, train_labels, 0, np.zeros(_num_images_train, dtype=bool))
-    validation = DataSet(validation_images, validation_labels, 0, np.zeros(validation_size, dtype=bool))
-    test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels), dtype=bool))
+    train = DataSet(train_images, train_labels)
+    validation = DataSet(validation_images, validation_labels)
+    test = DataSet(test_images, test_labels)
 
     return base.Datasets(train=train, validation=validation, test=test)
 
@@ -134,9 +134,9 @@ def load_small_cifar10(validation_size=1000, random_seed=0):
     test_images = data_sets.test.x
     test_labels = data_sets.test.labels
 
-    train = DataSet(train_images, train_labels, 0, np.zeros(len(train_labels), dtype=bool))
-    validation = DataSet(validation_images, validation_labels, 0, np.zeros(validation_size, dtype=bool))
-    test = DataSet(test_images, test_labels, 0, np.zeros(len(test_labels), dtype=bool))
+    train = DataSet(train_images, train_labels)
+    validation = DataSet(validation_images, validation_labels)
+    test = DataSet(test_images, test_labels)
     return base.Datasets(train=train, validation=validation, test=test)
 
 def load_small_cifar10(validation_size=1000, random_seed=0):
