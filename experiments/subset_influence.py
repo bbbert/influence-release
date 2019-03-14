@@ -153,7 +153,7 @@ class SubsetInfluenceLogreg(Experiment):
         return { 'fixed_test': fixed_test }
 
     @phase(3)
-    def fixed_test_influence(self):
+    def hessian(self):
         model = self.get_model()
         model.load('initial')
         l2_reg = self.R['cv_l2_reg']
@@ -163,6 +163,16 @@ class SubsetInfluenceLogreg(Experiment):
             res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg,
                                                              **self.eval_args)
 
+        return res
+
+    @phase(4)
+    def fixed_test_influence(self):
+        model = self.get_model()
+        model.load('initial')
+        l2_reg = self.R['cv_l2_reg']
+        res = dict()
+
+        hessian = self.R['hessian']
         fixed_test = self.R['fixed_test']
         fixed_test_pred_infl = []
         fixed_test_pred_margin_infl = []
@@ -171,14 +181,14 @@ class SubsetInfluenceLogreg(Experiment):
 
             with benchmark('Scalar infl for all training points on test_idx {}.'.format(test_idx)):
                 test_grad_loss = model.get_indiv_grad_loss(single_test_point).reshape(-1, 1)
-                test_grad_loss_H_inv = model.get_inverse_vp(hessian, test_grad_loss)
+                test_grad_loss_H_inv = model.get_inverse_vp(hessian, test_grad_loss).reshape(-1)
                 pred_infl = np.dot(self.R['train_grad_loss'], test_grad_loss_H_inv)
                 fixed_test_pred_infl.append(pred_infl)
 
             if self.num_classes == 2:
                 with benchmark('Scalar margin infl for all training points on test_idx {}.'.format(test_idx)):
                     test_grad_margin = model.get_total_grad_margin(single_test_point).reshape(-1, 1)
-                    test_grad_margin_H_inv = model.get_inverse_vp(hessian, test_grad_margin)
+                    test_grad_margin_H_inv = model.get_inverse_vp(hessian, test_grad_margin).reshape(-1)
                     pred_margin_infl = np.dot(self.R['train_grad_loss'], test_grad_margin_H_inv)
                     fixed_test_pred_margin_infl.append(pred_margin_infl)
 
@@ -261,7 +271,7 @@ class SubsetInfluenceLogreg(Experiment):
             print("Warning: unimplemented method to get subsets with the same features")
             return []
 
-    @phase(4)
+    @phase(5)
     def pick_subsets(self):
         rng = np.random.RandomState(self.config['subset_seed'])
         tagged_subsets = []
@@ -293,9 +303,11 @@ class SubsetInfluenceLogreg(Experiment):
         subset_tags = [tag for tag, subset in tagged_subsets]
         subset_indices = [subset for tag, subset in tagged_subsets]
 
+        subset_sizes = np.unique([len(subset) for tag, subset in tagged_subsets])
+
         return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
 
-    @phase(5)
+    @phase(6)
     def retrain(self):
         model = self.get_model()
         model.load('initial')
@@ -304,36 +316,6 @@ class SubsetInfluenceLogreg(Experiment):
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
         n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
-
-        hessian = self.R['hessian']
-        train_grad_loss = self.R['train_grad_loss']
-
-        # It is important that the influence gets calculated before the model is retrained,
-        # so that the parameters are the original parameters
-        start_time = time.time()
-        self_pred_infls = []
-        self_pred_margin_infls = []
-        for i, remove_indices in enumerate(subset_indices):
-            if (i % n_report == 0):
-                print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
-
-            grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
-            H_inv_grad_loss = model.get_inverse_vp(hessian, grad_loss.reshape(1, -1).T)
-            pred_infl = np.dot(grad_loss, H_inv_grad_loss)
-            self_pred_infls.append(pred_infl)
-
-            if model.num_classes == 2:
-                s = np.zeros(self.num_train)
-                s[remove_indices] = 1
-                grad_margin = model.get_total_grad_margin(self.train, s)
-                pred_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
-                self_pred_margin_infls.append(pred_margin_infl)
-
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each self-influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
 
         start_time = time.time()
         train_losses, test_losses = [], []
@@ -360,63 +342,95 @@ class SubsetInfluenceLogreg(Experiment):
                 remaining_time = time_per_retrain * (n - i - 1)
                 print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
 
-        res['subset_self_pred_infl'] = np.array(self_pred_infls)
         res['subset_train_losses'] = np.array(train_losses)
         res['subset_test_losses'] = np.array(test_losses)
 
         if self.num_classes == 2:
-            res['subset_self_pred_margin_infl'] = np.array(self_pred_margin_infls)
             res['subset_train_margins'] = np.array(train_margins)
             res['subset_test_margins'] = np.array(test_margins)
 
         return res
 
-    @phase(6)
-    def compute_infl(self):
+    @phase(7)
+    def compute_self_pred_infl(self):
+        model = self.get_model()
+        model.load('initial')
+        l2_reg = self.R['cv_l2_reg']
+        res = dict()
+
+        subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
+        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
+
+        hessian = self.R['hessian']
+        train_grad_loss = self.R['train_grad_loss']
+
+        # It is important that the influence gets calculated before the model is retrained,
+        # so that the parameters are the original parameters
+        start_time = time.time()
+        self_pred_infls = []
+        self_pred_margin_infls = []
+        for i, remove_indices in enumerate(subset_indices):
+            if (i % n_report == 0):
+                print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
+
+            grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
+            H_inv_grad_loss = model.get_inverse_vp(hessian, grad_loss.reshape(1, -1).T).reshape(-1)
+            pred_infl = np.dot(grad_loss, H_inv_grad_loss)
+            self_pred_infls.append(pred_infl)
+
+            if model.num_classes == 2:
+                s = np.zeros(self.num_train)
+                s[remove_indices] = 1
+                grad_margin = model.get_total_grad_margin(self.train, s)
+                pred_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
+                self_pred_margin_infls.append(pred_margin_infl)
+
+            if (i % n_report == 0):
+                cur_time = time.time()
+                time_per_vp = (cur_time - start_time) / (i + 1)
+                remaining_time = time_per_vp * (n - i - 1)
+                print('Each self-influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
+
+        res['subset_self_pred_infl'] = np.array(self_pred_infls)
+        if self.num_classes == 2:
+            res['subset_self_pred_margin_infl'] = np.array(self_pred_margin_infls)
+
+        return res
+
+    @phase(8)
+    def compute_actl_infl(self):
         res = dict()
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
 
-        # Compute fixed test influences
-        fixed_test = self.R['fixed_test']
-        initial_fixed_test_loss = self.R['initial_test_losses'][fixed_test]
-        subset_fixed_test_loss = self.R['subset_test_losses'][:, fixed_test]
-        subset_fixed_test_actl_infl = subset_fixed_test_loss - initial_fixed_test_loss
-        subset_fixed_test_pred_infl = np.zeros_like(subset_fixed_test_actl_infl)
-        for i, remove_indices in enumerate(subset_indices):
-            subset_fixed_test_pred_infl[i, :] = \
-                np.sum(self.R['fixed_test_pred_infl'][:, remove_indices], axis=1).reshape(-1)
+        # Helper to collate fixed test infl and subset self infl on a quantity q
+        def compute_collate_infl(fixed_test, fixed_test_pred_infl_q,
+                                 initial_train_q, initial_test_q,
+                                 subset_train_q, subset_test_q):
+            subset_fixed_test_actl_infl = subset_test_q[:, fixed_test] - initial_test_q[fixed_test]
+            subset_fixed_test_pred_infl = np.array([
+                np.sum(fixed_test_pred_infl_q[:, remove_indices], axis=1).reshape(-1)
+                for remove_indices in subset_indices])
+            subset_self_actl_infl = np.array([
+                np.sum(initial_train_q[remove_indices]) - np.sum(subset_train_q[i][remove_indices])
+                for i, remove_indices in enumerate(subset_indices)])
+            return subset_fixed_test_actl_infl, subset_fixed_test_pred_infl, subset_self_actl_infl
 
-        res['subset_fixed_test_actl_infl'] = subset_fixed_test_actl_infl
-        res['subset_fixed_test_pred_infl'] = subset_fixed_test_pred_infl
-
-        # Compute subset self influences
-        subset_self_actl_infl = np.zeros(len(subset_indices))
-        for i, remove_indices in enumerate(subset_indices):
-            subset_initial_loss = np.sum(self.R['initial_train_losses'][remove_indices])
-            subset_retrained_loss = np.sum(self.R['subset_train_losses'][i][remove_indices])
-            subset_self_actl_infl[i] = subset_retrained_loss - subset_initial_loss
-
-        res['subset_self_actl_infl'] = subset_self_actl_infl
+        # Compute influences on loss
+        res['subset_fixed_test_actl_infl'], \
+        res['subset_fixed_test_pred_infl'], \
+        res['subset_self_actl_infl'] = compute_collate_infl(
+            *[self.R[key] for key in ["fixed_test", "fixed_test_pred_infl",
+                                      "initial_train_losses", "initial_test_losses",
+                                      "subset_train_losses", "subset_test_losses"]])
 
         if self.num_classes == 2:
-            initial_fixed_test_margin = self.R['initial_test_margins'][fixed_test]
-            subset_fixed_test_margin = self.R['subset_test_margins'][:, fixed_test]
-            subset_fixed_test_actl_margin_infl = subset_fixed_test_margin - initial_fixed_test_margin
-            subset_fixed_test_pred_margin_infl = np.zeros_like(subset_fixed_test_actl_margin_infl)
-            for i, remove_indices in enumerate(subset_indices):
-                subset_fixed_test_pred_margin_infl[i, :] = \
-                    np.sum(self.R['fixed_test_pred_margin_infl'][:, remove_indices], axis=1).reshape(-1)
-
-            res['subset_fixed_test_actl_margin_infl'] = subset_fixed_test_actl_margin_infl
-            res['subset_fixed_test_pred_margin_infl'] = subset_fixed_test_pred_margin_infl
-
-            subset_self_actl_margin_infl = np.zeros(len(subset_indices))
-            for i, remove_indices in enumerate(subset_indices):
-                subset_initial_margin = np.sum(self.R['initial_train_margins'][remove_indices])
-                subset_retrained_margin = np.sum(self.R['subset_train_margins'][i][remove_indices])
-                subset_self_actl_margin_infl[i] = subset_retrained_margin - subset_initial_margin
-
-            res['subset_self_actl_margin_infl'] = subset_self_actl_margin_infl
+            # Compute influences on margin
+            res['subset_fixed_test_actl_margin_infl'], \
+            res['subset_fixed_test_pred_margin_infl'], \
+            res['subset_self_actl_margin_infl'] = compute_collate_infl(
+                *[self.R[key] for key in ["fixed_test", "fixed_test_pred_margin_infl",
+                                          "initial_train_margins", "initial_test_margins",
+                                          "subset_train_margins", "subset_test_margins"]])
 
         return res
