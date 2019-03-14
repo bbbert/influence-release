@@ -412,7 +412,7 @@ class SubsetInfluenceLogreg(Experiment):
                 np.sum(fixed_test_pred_infl_q[:, remove_indices], axis=1).reshape(-1)
                 for remove_indices in subset_indices])
             subset_self_actl_infl = np.array([
-                np.sum(initial_train_q[remove_indices]) - np.sum(subset_train_q[i][remove_indices])
+                np.sum(subset_train_q[i][remove_indices]) - np.sum(initial_train_q[remove_indices])
                 for i, remove_indices in enumerate(subset_indices)])
             return subset_fixed_test_actl_infl, subset_fixed_test_pred_infl, subset_self_actl_infl
 
