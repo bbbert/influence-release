@@ -414,17 +414,13 @@ class LogisticRegression(Model):
             raise Exception('Batched gradient evaluation not supported')
 
         batch_size = kwargs.get('grad_batch_size', 256)
-        indiv_grad_losses = []
-        for i in range(0, dataset.num_examples, batch_size):
-            print("\rGradients computed: {}/{}".format(i, dataset.num_examples), end="")
-            end = min(i + batch_size, dataset.num_examples)
-            indiv_grad_loss = self.sess.run(self.indiv_grad_loss, feed_dict={
-                self.input_placeholder: dataset.x[i:end, :],
-                self.labels_placeholder: dataset.labels[i:end],
-            })
-            print("\rGradients computed: {}/{}".format(end, dataset.num_examples), end="")
-            indiv_grad_losses.append(indiv_grad_loss)
-        print()
+        indiv_grad_losses = self.batch_evaluate(
+            lambda xs, labels: [self.sess.run(self.indiv_grad_loss, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            })],
+            lambda v1, v2: v1.extend(v2) or v1,
+            batch_size, dataset, value_name="Gradients")
         return np.vstack(indiv_grad_losses)
 
     def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
@@ -436,18 +432,16 @@ class LogisticRegression(Model):
 
         batch_size = kwargs.get('hess_batch_size', 256)
         hessian_reg = self.sess.run(self.hessian_of_reg)
-        for i in range(0, dataset.num_examples, batch_size):
-            print("\rHessians computed: {}/{}".format(i, dataset.num_examples), end="")
-            end = min(i + batch_size, dataset.num_examples)
-            hessian = self.sess.run(self.hessian_no_reg, feed_dict={
-                self.input_placeholder: dataset.x[i:end, :],
-                self.labels_placeholder: dataset.labels[i:end],
-                self.sample_weights_placeholder: sample_weights[i:end],
-            })
-            print("\rHessians computed: {}/{}".format(end, dataset.num_examples), end="")
-            hessian_reg += hessian
-        print()
-        return hessian_reg
+        hessian_no_reg = self.batch_evaluate(
+            lambda xs, labels, weights: self.sess.run(self.hessian_no_reg, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+            }),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights,
+            value_name="Hessians")
+        return hessian_reg + hessian_no_reg
 
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
         """

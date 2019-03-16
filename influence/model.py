@@ -159,14 +159,49 @@ class Model(object):
         raise NotImplementedError()
 
     def get_indiv_grad_loss_from_total_grad(self, dataset, **kwargs):
-        indiv_grad_loss = []
-        for i in range(dataset.num_examples):
-            singleton_dataset = DataSet(dataset.x[[i], :],
-                                        dataset.labels[[i]])
-            grad_loss = self.get_total_grad_loss(singleton_dataset,
-                                                 **kwargs)
-            indiv_grad_loss.append(grad_loss)
+        indiv_grad_loss = self.batch_evaluate(
+            lambda xs, labels: [self.get_total_grad_loss(DataSet(xs, labels), **kwargs)],
+            lambda v1, v2: v1.extend(v2) or v1,
+            1, dataset, value_name="Gradients")
         return np.array(indiv_grad_loss)
+
+    @staticmethod
+    def batch_evaluate(evaluate_fn, reduce_fn, batch_size,
+                       dataset, sample_weights=None,
+                       value_name="Batched values"):
+        """
+        Helper to evaluate a quantity over the entire dataset. The order of examples
+        in the dataset is preserved.
+
+        :param evaluate_fn: Function to evaluate the quantity given a batch
+                            of examples from the dataset. If sample_weights is None,
+                            evaluate_fn(xs, labels) will be called. If it is not None,
+                            evaluate_fn(xs, labels, weights) will be called.
+        :param reduce_fn: Function to accumulate values from two successive calles to
+                          evaluate. If v1 is the value from the previous batch and v2
+                          is the value from the second batch, reduce_fn(v1, v2) should
+                          return the result of evaluating on both batches combined.
+        :param batch_size: The maximum number of examples per batch.
+        :param dataset: The dataset to evaluate the quantity over.
+        :param sample_weights: The sample weights of the dataset examples, or if this
+                               is not needed, None.
+        :param value_name: The name of the value being computed for debugging and
+                           feedback purposes.
+        :return: The quantity, evaluated over the entire dataset.
+        """
+        value = None
+        for i in range(0, dataset.num_examples, batch_size):
+            print("\r{} computed: {}/{}".format(value_name, i, dataset.num_examples), end="")
+            end = min(i + batch_size, dataset.num_examples)
+
+            args = (dataset.x[i:end, :], dataset.labels[i:end])
+            if sample_weights is not None:
+                args = args + (sample_weights[i:end],)
+            batch_value = evaluate_fn(*args)
+
+            value = batch_value if value is None else reduce_fn(value, batch_value)
+        print()
+        return value
 
     @staticmethod
     def infer_arch(dataset):

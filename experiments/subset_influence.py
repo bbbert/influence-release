@@ -43,7 +43,8 @@ class SubsetInfluenceLogreg(Experiment):
         self.num_subsets = self.config['num_subsets']
         self.subset_size = int(self.num_train * self.config['subset_rel_size'])
 
-        MAX_MEMORY = int(1e7)
+        # Heuristic for determining maximum batch evaluation sizes without OOM
+        MAX_MEMORY = int(1e9)
         D = model_config['arch']['input_dim'] * self.num_classes
         self.eval_args = {
             'grad_batch_size': max(1, MAX_MEMORY // D),
