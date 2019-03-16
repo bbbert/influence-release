@@ -200,7 +200,7 @@ class Model(object):
             batch_value = evaluate_fn(*args)
 
             value = batch_value if value is None else reduce_fn(value, batch_value)
-        print()
+        print("\r{} computed: {}/{}".format(value_name, dataset.num_examples, dataset.num_examples))
         return value
 
     @staticmethod

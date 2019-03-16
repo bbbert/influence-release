@@ -398,7 +398,7 @@ class LogisticRegression(Model):
         return grad_loss
 
     def get_indiv_grad_loss(self, dataset, **kwargs):
-        method = kwargs.get('method', 'batched')
+        method = self.config['indiv_grad_method']
 
         if method == "batched":
             # This works only when we can explicitly compute the individual gradients
@@ -413,7 +413,7 @@ class LogisticRegression(Model):
         if not hasattr(self, 'indiv_grad_loss'):
             raise Exception('Batched gradient evaluation not supported')
 
-        batch_size = kwargs.get('grad_batch_size', 256)
+        batch_size = self.config['grad_batch_size']
         indiv_grad_losses = self.batch_evaluate(
             lambda xs, labels: [self.sess.run(self.indiv_grad_loss, feed_dict={
                 self.input_placeholder: xs,
@@ -430,7 +430,7 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        batch_size = kwargs.get('hess_batch_size', 256)
+        batch_size = self.config['hessian_batch_size']
         hessian_reg = self.sess.run(self.hessian_of_reg)
         hessian_no_reg = self.batch_evaluate(
             lambda xs, labels, weights: self.sess.run(self.hessian_no_reg, feed_dict={
@@ -561,8 +561,18 @@ class LogisticRegression(Model):
             'tf_init_seed': 0,
 
             # The L2 regularization to use if not overriden by a keyword
-            # argument to model.fit()
+            # argument to model methods
             'default_l2_reg': 1,
 
+            # The method to use for evaluating individual gradients
+            'indiv_grad_method': 'batched',
+
+            # The batch size to use when evaluating gradients using the batched method
+            'grad_batch_size': 4096,
+
+            # The batch size to use when evaluating the hessian
+            'hessian_batch_size': 256,
+
+            # Maximum iterations to run sklearn's LBFGS optimization for
             'max_lbfgs_iter': 2048,
         }

@@ -35,21 +35,20 @@ class SubsetInfluenceLogreg(Experiment):
         model_config = LogisticRegression.default_config()
         model_config['arch'] = LogisticRegression.infer_arch(self.datasets.train)
         model_config['arch']['fit_intercept'] = True
+
+        # Heuristic for determining maximum batch evaluation sizes without OOM
+        D = model_config['arch']['input_dim'] * model_config['arch']['num_classes']
+        model_config['grad_batch_size'] =  max(1, self.config['max_memory'] // D)
+        model_config['hessian_batch_size'] = max(1, self.config['max_memory'] // (D * D))
+
         self.model_dir = model_dir
         self.model_config = model_config
 
+        # Convenience member variables
         self.num_train = self.datasets.train.num_examples
         self.num_classes = self.model_config['arch']['num_classes']
         self.num_subsets = self.config['num_subsets']
         self.subset_size = int(self.num_train * self.config['subset_rel_size'])
-
-        # Heuristic for determining maximum batch evaluation sizes without OOM
-        MAX_MEMORY = int(1e9)
-        D = model_config['arch']['input_dim'] * self.num_classes
-        self.eval_args = {
-            'grad_batch_size': max(1, MAX_MEMORY // D),
-            'hess_batch_size': max(1, MAX_MEMORY // (D * D)),
-        }
 
     experiment_id = "ss_logreg"
 
@@ -125,7 +124,7 @@ class SubsetInfluenceLogreg(Experiment):
             res['initial_test_margins'] = model.get_indiv_margin(self.test)
 
         with benchmark("Computing gradients"):
-            res['train_grad_loss'] = model.get_indiv_grad_loss(self.train, **self.eval_args)
+            res['train_grad_loss'] = model.get_indiv_grad_loss(self.train)
 
         return res
 
@@ -161,8 +160,7 @@ class SubsetInfluenceLogreg(Experiment):
         res = dict()
 
         with benchmark("Computing hessian"):
-            res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg,
-                                                             **self.eval_args)
+            res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg)
 
         return res
 

@@ -12,6 +12,8 @@ if __name__ == "__main__":
     # Environment args
     parser.add_argument('--out_dir', default=None, type=str,
                         help="The experiment output directory")
+    parser.add_argument('--max_memory', default=1e9, type=int,
+                        help="A rule-of-thumb guess at the maximum size of a float32 tensor before OOM")
 
     # Execution args
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
@@ -47,6 +49,7 @@ if __name__ == "__main__":
             'mnist_small': (1e-3, 1, 4),
             'spam': (1e-4, 1e-1, 4),
         }[args.dataset_id],
+        'max_memory': int(args.max_memory),
     }
 
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
