@@ -465,7 +465,7 @@ class SubsetInfluenceLogreg(Experiment):
                 print('Computing Newton self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
 
             hessian_sw = hessian - model.get_hessian_reg(self.train.subset(remove_indices),
-                                                         np.ones(len(remove_indices)), l2_reg=0)
+                                                         np.ones(len(remove_indices)), l2_reg=0, verbose=False)
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
             H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss.reshape(1, -1).T).reshape(-1)
