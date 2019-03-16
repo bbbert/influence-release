@@ -584,6 +584,6 @@ class SubsetInfluenceLogreg(Experiment):
         for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
             dparam = self.R[dparam_type]
             res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
-            res[dparam_type + '_hessian_norm'] = np.sum(dparam * np.dot(dparam, hessian), axis=1)
+            res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * np.dot(dparam, hessian), axis=1))
 
         return res
