@@ -69,10 +69,9 @@ class LogisticRegression(Model):
             if self.fit_intercept:
                 margin_input = tf.pad(margin_input, [[0, 0], [0, 1]],
                                       mode="CONSTANT", constant_values=1.0)
-            self.indiv_grad_margin = tf.multiply(
-                margin_input,
-                tf.expand_dims(y * self.sample_weights_placeholder, 1))
-            self.total_grad_margin = tf.reduce_sum(self.indiv_grad_margin, axis=0)
+            self.indiv_grad_margin = tf.multiply(margin_input, tf.expand_dims(y, 1))
+            self.total_grad_margin = tf.einsum(
+                'ai,a->ai', self.indiv_grad_margin, self.sample_weights_placeholder)
 
         # Calculate gradients explicitly
         self.gradients(self.input_placeholder,
@@ -420,7 +419,7 @@ class LogisticRegression(Model):
                 self.labels_placeholder: labels,
             })],
             lambda v1, v2: v1.extend(v2) or v1,
-            batch_size, dataset, value_name="Gradients")
+            batch_size, dataset, value_name="Gradients", **kwargs)
         return np.vstack(indiv_grad_losses)
 
     def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
@@ -440,7 +439,7 @@ class LogisticRegression(Model):
             }),
             lambda v1, v2: v1 + v2,
             batch_size, dataset, sample_weights,
-            value_name="Hessians")
+            value_name="Hessians", **kwargs)
         return hessian_reg + hessian_no_reg
 
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
@@ -475,6 +474,19 @@ class LogisticRegression(Model):
             self.labels_placeholder: dataset.labels,
         })
         return indiv_margin
+
+    def get_indiv_grad_margin(self, dataset, **kwargs):
+        assert self.num_classes == 2, "Margins only supported for binary classification"
+
+        batch_size = self.config['grad_batch_size']
+        indiv_grad_margins = self.batch_evaluate(
+            lambda xs, labels: [self.sess.run(self.indiv_grad_margin, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            })],
+            lambda v1, v2: v1.extend(v2) or v1,
+            batch_size, dataset, value_name="Margin gradients", **kwargs)
+        return np.vstack(indiv_grad_margins)
 
     def get_total_grad_margin(self, dataset, sample_weights=None, **kwargs):
         assert self.num_classes == 2, "Margins only supported for binary classification"

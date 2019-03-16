@@ -168,7 +168,8 @@ class Model(object):
     @staticmethod
     def batch_evaluate(evaluate_fn, reduce_fn, batch_size,
                        dataset, sample_weights=None,
-                       value_name="Batched values"):
+                       value_name="Batched values",
+                       **kwargs):
         """
         Helper to evaluate a quantity over the entire dataset. The order of examples
         in the dataset is preserved.
@@ -190,8 +191,10 @@ class Model(object):
         :return: The quantity, evaluated over the entire dataset.
         """
         value = None
+        verbose = kwargs.get('verbose', True)
         for i in range(0, dataset.num_examples, batch_size):
-            print("\r{} computed: {}/{}".format(value_name, i, dataset.num_examples), end="")
+            if verbose:
+                print("\r{} computed: {}/{}".format(value_name, i, dataset.num_examples), end="")
             end = min(i + batch_size, dataset.num_examples)
 
             args = (dataset.x[i:end, :], dataset.labels[i:end])
@@ -200,7 +203,8 @@ class Model(object):
             batch_value = evaluate_fn(*args)
 
             value = batch_value if value is None else reduce_fn(value, batch_value)
-        print("\r{} computed: {}/{}".format(value_name, dataset.num_examples, dataset.num_examples))
+        if verbose:
+            print("\r{} computed: {}/{}".format(value_name, dataset.num_examples, dataset.num_examples))
         return value
 
     @staticmethod

@@ -12,8 +12,8 @@ if __name__ == "__main__":
     # Environment args
     parser.add_argument('--out_dir', default=None, type=str,
                         help="The experiment output directory")
-    parser.add_argument('--max_memory', default=1e9, type=int,
-                        help="A rule-of-thumb guess at the maximum size of a float32 tensor before OOM")
+    parser.add_argument('--max-memory', default=1e9, type=int,
+                        help="A rule-of-thumb estimate of the GPU memory capacity")
 
     # Execution args
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
