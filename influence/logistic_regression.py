@@ -209,28 +209,22 @@ class LogisticRegression(Model):
         K, Kp, D = self.num_classes, self.pseudo_num_classes, self.input_dim
         KpD = Kp * D
 
-        softmax = tf.nn.softmax(logits)                     # (?, K)
+        softmax = tf.nn.softmax(logits)                             # (?, K)
         if self.num_classes == 2:
-            softmax = softmax[:, 1:2]                       # (?, Kp)
+            softmax = softmax[:, 1:2]                               # (?, Kp)
         factor = tf.linalg.diag(softmax) - \
-            tf.multiply(tf.expand_dims(softmax, 1),
-                        tf.expand_dims(softmax, 2))         # (?, Kp, Kp)
-        outers = tf.multiply(tf.expand_dims(inputs, 1),
-                             tf.expand_dims(inputs, 2))     # (?, D,  D)
-
-        ee_factor = tf.expand_dims(tf.expand_dims(factor, 2), 4) # (?, Kp, 1, Kp, 1)
-        ee_outers = tf.expand_dims(tf.expand_dims(outers, 1), 3) # (?, 1,  D, 1,  D)
-        indiv_hessian = tf.reshape(tf.multiply(ee_factor, ee_outers),
-                                   (-1, KpD, KpD))
+            tf.einsum('ai,aj->aij', softmax, softmax)               # (?, Kp, Kp)
+        indiv_hessian = tf.reshape(
+            tf.einsum('aij,ak,al->aikjl', factor, inputs, inputs),  # (?, Kp, D, Kp, D)
+            (-1, KpD, KpD))                                         # (?, KpD, KpD)
 
         # Hessian of l2 regularization
         hess_reg = self.l2_reg * tf.eye(KpD, KpD)
 
         if self.fit_intercept:
-            e_factor = tf.expand_dims(factor, 3)                    # (?, Kp, Kp, 1)
-            e_inputs = tf.expand_dims(tf.expand_dims(inputs, 1), 2) # (?, 1,  1,  D)
-            off_diag = tf.reshape(tf.multiply(e_factor, e_inputs),
-                                  (-1, Kp, KpD))
+            off_diag = tf.reshape(
+                tf.einsum('aij,ak->aijk', factor, inputs),          # (?, Kp, Kp, D)
+                (-1, Kp, KpD))                                      # (?, Kp, KpD)
 
             top_row = tf.concat([indiv_hessian,
                                  tf.transpose(off_diag, (0, 2, 1))], axis=2)
@@ -240,7 +234,7 @@ class LogisticRegression(Model):
             hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
                               mode="CONSTANT", constant_values=0.0)
 
-        self.hessian_no_reg = tf.reduce_sum(indiv_hessian, axis=0)
+        self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
         self.hessian_of_reg = hess_reg
 
