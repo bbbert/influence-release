@@ -142,7 +142,7 @@ class SubsetInfluenceLogreg(Experiment):
         elif dataset_id == "processed_imageNet":
             fixed_test = [684, 850, 1492, 2357, 480, 2288]
         else:
-            test_losses = self.R['test_losses']
+            test_losses = self.R['initial_test_losses']
             argsort = np.argsort(test_losses)
             high_loss = argsort[-3:] # Pick 3 high loss points
             random_loss = np.random.choice(argsort[:-3], 3, replace=False) # Pick 3 random points
