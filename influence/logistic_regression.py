@@ -71,7 +71,7 @@ class LogisticRegression(Model):
                                       mode="CONSTANT", constant_values=1.0)
             self.indiv_grad_margin = tf.multiply(margin_input, tf.expand_dims(y, 1))
             self.total_grad_margin = tf.einsum(
-                'ai,a->ai', self.indiv_grad_margin, self.sample_weights_placeholder)
+                'ai,a->i', self.indiv_grad_margin, self.sample_weights_placeholder)
 
         # Calculate gradients explicitly
         self.gradients(self.input_placeholder,
