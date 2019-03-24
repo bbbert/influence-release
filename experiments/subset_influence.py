@@ -90,7 +90,7 @@ class SubsetInfluenceLogreg(Experiment):
                     val_indices = np.arange(fold_begin, fold_end)
 
                     model.fit(self.train.subset(train_indices), l2_reg=reg)
-                    fold_loss = model.get_total_loss(self.train.subset(val_indices), reg=True, l2_reg=reg)
+                    fold_loss = model.get_total_loss(self.train.subset(val_indices), reg=False)
                     cv_error += fold_loss
 
             cv_errors[i] = cv_error
