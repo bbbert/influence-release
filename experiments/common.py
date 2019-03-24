@@ -18,17 +18,22 @@ DEFAULT_OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
 """
 Metadata class for a phase of an experiment.
 """
-ExperimentPhase = namedtuple('Phase', ['name', 'index', 'instancemethod'])
+ExperimentPhase = namedtuple('Phase', ['name', 'index', 'deps', 'instancemethod'])
 
-def phase(index):
+def phase(index, dep_names=None):
     """
     Decorates an instancemethod of an Experiment class to denote
     that it is an experiment phase. The tags will be used by the class
     decorator `collect_phases' to register phases as a class variable.
 
     :param index: The index used to order phases. Phases will be ordered
-                  by index, and then by alphabetical order of the instance
-                  method name. Indices must be unique across phases.
+                  by index. Indices must be unique across phases, but indices
+                  need not be contiguous.
+    :param dep_names: A list of the names of the phases that this phase
+                      depends on. This is used to figure out which phases
+                      need re-evaluation. Each phase can only depend on
+                      phases with a smaller index. If None, the default
+                      is to consider it dependent on all phases before it.
     """
     def decorator(func):
         phase_name = func.__name__
@@ -37,7 +42,9 @@ def phase(index):
             return func(self, *args, **kwargs)
 
         wrapper.is_phase = True
+        wrapper.name = phase_name
         wrapper.index = index
+        wrapper.dep_names = dep_names
         return wrapper
     return decorator
 
@@ -47,16 +54,54 @@ def collect_phases(cls):
     decorated by `phase' into a class variable PHASES containing
     `ExperimentPhase's in the correct order.
     """
-    phases = []
+    phase_attrs_by_index = dict()
     for attrname in dir(cls):
         attr = getattr(cls, attrname)
-        if hasattr(attr, 'is_phase') and attr.is_phase:
-            phases.append((attr.index, attrname))
-    phases.sort()
+        if not getattr(attr, 'is_phase', False): continue
+        if attr.index not in phase_attrs_by_index:
+            phase_attrs_by_index[attr.index] = []
+        phase_attrs_by_index[attr.index].append(attr)
 
-    cls.PHASES = [ExperimentPhase(attrname, index,
-                                  getattr(cls, attrname))
-                  for index, attrname in phases]
+    # Fail if multiple phases have the same index
+    same_index = [
+        ['{}-{}'.format(index, phase_attr.name)
+         for phase_attr in phase_attrs]
+        for index, phase_attrs in phase_attrs_by_index.items()
+        if len(phase_attrs) > 1
+    ]
+    if len(same_index) > 0:
+        error = ("Phases must have unique indices. "
+                 "These phases have the same index: {}").format(same_index)
+        raise ValueError(error)
+
+    # Construct list of phases in order of execution
+    cls.PHASES = []
+    phase_indices = sorted(list(phase_attrs_by_index.keys()))
+    for index in phase_indices:
+        phase_attr = phase_attrs_by_index[index][0]
+
+        deps = []
+        if phase_attr.dep_names:
+            for dep_name in phase_attr.dep_names:
+                dep_attr = getattr(cls, dep_name, None)
+                if dep_attr is None:
+                    error = ("Phase {}-{} depends on phase {}, "
+                             "which could not be found in the class.").format(
+                        index, phase_attr.name, dep_name)
+                    raise ValueError(error)
+                elif dep_attr.index > index:
+                    error = ("Phase {}-{} cannot depend on phase {}-{}, "
+                             "because it has a higher index.").format(
+                        index, phase_attr.name, dep_attr.index, dep_name)
+                    raise ValueError(error)
+                else:
+                    deps.append(phase_attr.index)
+        else:
+            # By default, each phase depends on all the phases before it
+            deps = [phase.index for phase in cls.PHASES]
+
+        phase = ExperimentPhase(phase_attr.name, index, deps, phase_attr)
+        cls.PHASES.append(phase)
 
     # Support non-contiguous indices
     cls.PHASE_BY_INDEX = { phase.index: phase for phase in cls.PHASES }

@@ -69,10 +69,9 @@ class LogisticRegression(Model):
             if self.fit_intercept:
                 margin_input = tf.pad(margin_input, [[0, 0], [0, 1]],
                                       mode="CONSTANT", constant_values=1.0)
-            self.indiv_grad_margin = tf.multiply(
-                margin_input,
-                tf.expand_dims(y * self.sample_weights_placeholder, 1))
-            self.total_grad_margin = tf.reduce_sum(self.indiv_grad_margin, axis=0)
+            self.indiv_grad_margin = tf.multiply(margin_input, tf.expand_dims(y, 1))
+            self.total_grad_margin = tf.einsum(
+                'ai,a->i', self.indiv_grad_margin, self.sample_weights_placeholder)
 
         # Calculate gradients explicitly
         self.gradients(self.input_placeholder,
@@ -209,28 +208,22 @@ class LogisticRegression(Model):
         K, Kp, D = self.num_classes, self.pseudo_num_classes, self.input_dim
         KpD = Kp * D
 
-        softmax = tf.nn.softmax(logits)                     # (?, K)
+        softmax = tf.nn.softmax(logits)                             # (?, K)
         if self.num_classes == 2:
-            softmax = softmax[:, 1:2]                       # (?, Kp)
+            softmax = softmax[:, 1:2]                               # (?, Kp)
         factor = tf.linalg.diag(softmax) - \
-            tf.multiply(tf.expand_dims(softmax, 1),
-                        tf.expand_dims(softmax, 2))         # (?, Kp, Kp)
-        outers = tf.multiply(tf.expand_dims(inputs, 1),
-                             tf.expand_dims(inputs, 2))     # (?, D,  D)
-
-        ee_factor = tf.expand_dims(tf.expand_dims(factor, 2), 4) # (?, Kp, 1, Kp, 1)
-        ee_outers = tf.expand_dims(tf.expand_dims(outers, 1), 3) # (?, 1,  D, 1,  D)
-        indiv_hessian = tf.reshape(tf.multiply(ee_factor, ee_outers),
-                                   (-1, KpD, KpD))
+            tf.einsum('ai,aj->aij', softmax, softmax)               # (?, Kp, Kp)
+        indiv_hessian = tf.reshape(
+            tf.einsum('aij,ak,al->aikjl', factor, inputs, inputs),  # (?, Kp, D, Kp, D)
+            (-1, KpD, KpD))                                         # (?, KpD, KpD)
 
         # Hessian of l2 regularization
         hess_reg = self.l2_reg * tf.eye(KpD, KpD)
 
         if self.fit_intercept:
-            e_factor = tf.expand_dims(factor, 3)                    # (?, Kp, Kp, 1)
-            e_inputs = tf.expand_dims(tf.expand_dims(inputs, 1), 2) # (?, 1,  1,  D)
-            off_diag = tf.reshape(tf.multiply(e_factor, e_inputs),
-                                  (-1, Kp, KpD))
+            off_diag = tf.reshape(
+                tf.einsum('aij,ak->aijk', factor, inputs),          # (?, Kp, Kp, D)
+                (-1, Kp, KpD))                                      # (?, Kp, KpD)
 
             top_row = tf.concat([indiv_hessian,
                                  tf.transpose(off_diag, (0, 2, 1))], axis=2)
@@ -240,7 +233,7 @@ class LogisticRegression(Model):
             hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
                               mode="CONSTANT", constant_values=0.0)
 
-        self.hessian_no_reg = tf.reduce_sum(indiv_hessian, axis=0)
+        self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
         self.hessian_of_reg = hess_reg
 
@@ -404,7 +397,7 @@ class LogisticRegression(Model):
         return grad_loss
 
     def get_indiv_grad_loss(self, dataset, **kwargs):
-        method = kwargs.get('method', 'batched')
+        method = self.config['indiv_grad_method']
 
         if method == "batched":
             # This works only when we can explicitly compute the individual gradients
@@ -419,18 +412,14 @@ class LogisticRegression(Model):
         if not hasattr(self, 'indiv_grad_loss'):
             raise Exception('Batched gradient evaluation not supported')
 
-        batch_size = kwargs.get('grad_batch_size', 256)
-        indiv_grad_losses = []
-        for i in range(0, dataset.num_examples, batch_size):
-            print("\rGradients computed: {}/{}".format(i, dataset.num_examples), end="")
-            end = min(i + batch_size, dataset.num_examples)
-            indiv_grad_loss = self.sess.run(self.indiv_grad_loss, feed_dict={
-                self.input_placeholder: dataset.x[i:end, :],
-                self.labels_placeholder: dataset.labels[i:end],
-            })
-            print("\rGradients computed: {}/{}".format(end, dataset.num_examples), end="")
-            indiv_grad_losses.append(indiv_grad_loss)
-        print()
+        batch_size = self.config['grad_batch_size']
+        indiv_grad_losses = self.batch_evaluate(
+            lambda xs, labels: [self.sess.run(self.indiv_grad_loss, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            })],
+            lambda v1, v2: v1.extend(v2) or v1,
+            batch_size, dataset, value_name="Gradients", **kwargs)
         return np.vstack(indiv_grad_losses)
 
     def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
@@ -440,20 +429,18 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        batch_size = kwargs.get('hess_batch_size', 256)
+        batch_size = self.config['hessian_batch_size']
         hessian_reg = self.sess.run(self.hessian_of_reg)
-        for i in range(0, dataset.num_examples, batch_size):
-            print("\rHessians computed: {}/{}".format(i, dataset.num_examples), end="")
-            end = min(i + batch_size, dataset.num_examples)
-            hessian = self.sess.run(self.hessian_no_reg, feed_dict={
-                self.input_placeholder: dataset.x[i:end, :],
-                self.labels_placeholder: dataset.labels[i:end],
-                self.sample_weights_placeholder: sample_weights[i:end],
-            })
-            print("\rHessians computed: {}/{}".format(end, dataset.num_examples), end="")
-            hessian_reg += hessian
-        print()
-        return hessian_reg
+        hessian_no_reg = self.batch_evaluate(
+            lambda xs, labels, weights: self.sess.run(self.hessian_no_reg, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+            }),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights,
+            value_name="Hessians", **kwargs)
+        return hessian_reg + hessian_no_reg
 
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
         """
@@ -487,6 +474,19 @@ class LogisticRegression(Model):
             self.labels_placeholder: dataset.labels,
         })
         return indiv_margin
+
+    def get_indiv_grad_margin(self, dataset, **kwargs):
+        assert self.num_classes == 2, "Margins only supported for binary classification"
+
+        batch_size = self.config['grad_batch_size']
+        indiv_grad_margins = self.batch_evaluate(
+            lambda xs, labels: [self.sess.run(self.indiv_grad_margin, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            })],
+            lambda v1, v2: v1.extend(v2) or v1,
+            batch_size, dataset, value_name="Margin gradients", **kwargs)
+        return np.vstack(indiv_grad_margins)
 
     def get_total_grad_margin(self, dataset, sample_weights=None, **kwargs):
         assert self.num_classes == 2, "Margins only supported for binary classification"
@@ -573,8 +573,18 @@ class LogisticRegression(Model):
             'tf_init_seed': 0,
 
             # The L2 regularization to use if not overriden by a keyword
-            # argument to model.fit()
+            # argument to model methods
             'default_l2_reg': 1,
 
+            # The method to use for evaluating individual gradients
+            'indiv_grad_method': 'batched',
+
+            # The batch size to use when evaluating gradients using the batched method
+            'grad_batch_size': 4096,
+
+            # The batch size to use when evaluating the hessian
+            'hessian_batch_size': 256,
+
+            # Maximum iterations to run sklearn's LBFGS optimization for
             'max_lbfgs_iter': 2048,
         }
