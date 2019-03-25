@@ -78,13 +78,16 @@ class SufficientRegularizationLogreg(Experiment):
         reg_min, reg_max, reg_samples = self.config['normalized_cross_validation_range']
         reg_min *= self.num_train
 
-        res['cv_l2_reg'] = reg_min
+        model.fit(self.train, l2_reg=reg_min)
+        res['train_loss'] = model.get_total_loss(self.train, reg=False)
+        res['test_loss'] = model.get_total_loss(self.test, reg=False)
+        res['l2_reg'] = reg_min
         return res
 
     @phase(1)
     def initial_training(self):
         model = self.get_model()
-        l2_reg = self.R['cv_l2_reg']
+        l2_reg = self.R['l2_reg']
         res = dict()
 
         with benchmark("Training original model"):
@@ -131,7 +134,7 @@ class SufficientRegularizationLogreg(Experiment):
     def hessian(self):
         model = self.get_model()
         model.load('initial')
-        l2_reg = self.R['cv_l2_reg']
+        l2_reg = self.R['l2_reg']
         res = dict()
 
         with benchmark("Computing hessian"):
@@ -284,7 +287,7 @@ class SufficientRegularizationLogreg(Experiment):
     def retrain(self):
         model = self.get_model()
         model.load('initial')
-        l2_reg = self.R['cv_l2_reg']
+        l2_reg = self.R['l2_reg']
         res = dict()
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
@@ -328,7 +331,7 @@ class SufficientRegularizationLogreg(Experiment):
     def compute_self_pred_infl(self):
         model = self.get_model()
         model.load('initial')
-        l2_reg = self.R['cv_l2_reg']
+        l2_reg = self.R['l2_reg']
         res = dict()
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
