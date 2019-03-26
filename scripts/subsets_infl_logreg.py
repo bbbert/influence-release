@@ -10,6 +10,8 @@ from experiments.subset_influence import SubsetInfluenceLogreg
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compute subset self and test influences')
     # Environment args
+    parser.add_argument('--data-dir', default=None, type=str,
+                        help="The base dataset directory")
     parser.add_argument('--out-dir', default=None, type=str,
                         help="The experiment output directory")
     parser.add_argument('--max-memory', default=1e9, type=int,
@@ -37,6 +39,7 @@ if __name__ == "__main__":
         'dataset_id': args.dataset_id,
         'center_data': False,
         'append_bias': False,
+        'data_dir': args.data_dir,
     }
     config = {
         'dataset_config': dataset_config,
