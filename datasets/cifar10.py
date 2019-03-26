@@ -19,8 +19,8 @@ def _one_hot_encoded(class_numbers, num_classes=None):
         num_classes = np.max(class_numbers)+1
     return np.eye(num_classes, dtype=float)[class_numbers]
 
-def load_cifar10(validation_size=1000):
-    dataset_dir = get_dataset_dir('cifar10')
+def load_cifar10(validation_size=1000, data_dir=None):
+    dataset_dir = get_dataset_dir('cifar10', data_dir=data_dir)
     cifar10_path = os.path.join(dataset_dir, 'cifar10.npz')
 
     img_size = 32
@@ -113,11 +113,11 @@ def load_cifar10(validation_size=1000):
 
     return base.Datasets(train=train, validation=validation, test=test)
 
-def load_small_cifar10(validation_size=1000, random_seed=0):
-    dataset_dir = get_dataset_dir('cifar10')
+def load_small_cifar10(validation_size=1000, random_seed=0, data_dir=None):
+    dataset_dir = get_dataset_dir('cifar10', data_dir=data_dir)
 
 
-    data_sets = load_cifar10(train_dir, validation_size)
+    data_sets = load_cifar10(train_dir, validation_size, data_dir=data_dir)
     rng = np.random.RandomState(random_seed)
 
     train_images = data_sets.train.x

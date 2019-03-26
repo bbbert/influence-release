@@ -15,18 +15,20 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 """
 The fixed directory (../../data/) to save datasets into.
 """
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+DEFAULT_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
 
-def get_dataset_dir(dataset_name):
+def get_dataset_dir(dataset_name, data_dir=None):
     """
     Returns the absolute path to the canonical base directory for a dataset,
     creating it if it does not already exist.
 
-    :param dataset_name: the name of the dataset
-    :return: the absolute path to the dataset's base directory
+    :param dataset_name: The name of the dataset
+    :param data_dir: The path to the base dataset directory. If None, defaults to
+                     a subdirectory of the influence project root.
+    :return: The absolute path to the dataset's base directory
     """
 
-    dataset_dir = os.path.join(DATA_DIR, dataset_name)
+    dataset_dir = os.path.join(data_dir, dataset_name)
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
     if not os.path.isdir(dataset_dir):
