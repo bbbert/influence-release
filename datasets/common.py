@@ -28,6 +28,7 @@ def get_dataset_dir(dataset_name, data_dir=None):
     :return: The absolute path to the dataset's base directory
     """
 
+    data_dir = data_dir if data_dir is not None else DEFAULT_DATA_DIR
     dataset_dir = os.path.join(data_dir, dataset_name)
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
