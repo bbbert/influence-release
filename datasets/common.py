@@ -290,27 +290,18 @@ def find_distances(target, X, theta=None):
         return np.abs((X - target).dot(theta))
 
 def center_data(datasets):
-    allx = np.concatenate((datasets.train.x, datasets.test.x))
-    valid = None
-    if datasets.validation is not None:
-        allx = np.concatenate((allx, datasets.validation.x))
-    avg = np.mean(allx, axis=0)
-    if datasets.validation is not None:
-        valid = DataSet(datasets.validation.x - avg, datasets.validation.labels)
-    return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels),
-                         validation=valid,
-                         test=DataSet(datasets.test.x - avg, datasets.test.labels))
+    avg = np.mean(datasets.train.x, axis=0)
+    train, validation, test = [
+        DataSet(dataset.x - avg, dataset.labels) if dataset is not None else None
+        for dataset in (datasets.train, datasets.validation, datasets.test)
+    ]
+    return base.Datasets(train=train, validation=validation, test=test)
 
 def append_bias(datasets):
     def append_bias_x(A):
         return np.hstack((A, np.ones((A.shape[0], 1))))
-
-    if datasets.train is not None:
-        datasets.train._x = append_bias_x(datasets.train._x)
-    if datasets.validation is not None:
-        datasets.validation._x = append_bias_x(datasets.validation._x)
-    if datasets.test is not None:
-        datasets.test._x = append_bias_x(datasets.test._x)
-
-    return datasets
-
+    train, validation, test = [
+        DataSet(append_bias_x(dataset.x), dataset.labels) if dataset is not None else None
+        for dataset in (datasets.train, datasets.validation, datasets.test)
+    ]
+    return base.Datasets(train=train, validation=validation, test=test)
