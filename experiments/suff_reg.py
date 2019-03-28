@@ -79,8 +79,12 @@ class SufficientRegularizationLogreg(Experiment):
         reg_min *= self.num_train
 
         model.fit(self.train, l2_reg=reg_min)
-        res['train_loss'] = model.get_total_loss(self.train, reg=False)
-        res['test_loss'] = model.get_total_loss(self.test, reg=False)
+        res['tot_train_loss'] = model.get_total_loss(self.train, reg=False)
+        res['tot_test_loss'] = model.get_total_loss(self.test, reg=False)
+        res['ave_train_loss'] = res['tot_train_loss']/self.num_train
+        res['ave_test_loss'] = res['tot_test_loss']/self.test.num_examples
+        res['train_acc'] = model.get_accuracy(self.train)
+        res['test_acc'] = model.get_accuracy(self.test)
         res['l2_reg'] = reg_min
         return res
 
@@ -414,119 +418,8 @@ class SufficientRegularizationLogreg(Experiment):
 
         return res
 
+    # The newton stuff takes too long, maybe numerical issues
     @phase(9)
-    def newton(self):
-        model = self.get_model()
-        model.load('initial')
-        res = dict()
-
-        # The Newton approximation is obtained by evaluating
-        # -g(|w|, theta_0)^T H(s+w, theta_0)^{-1} g(w, theta_0)
-        # where w is the difference in weights. Since we already have the full
-        # hessian H_reg(s), we can compute H(w) (with no regularization) and
-        # use it to update H_reg(s+w) = H_reg(s) + H(w) instead.
-
-        subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
-        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
-
-        hessian = self.R['hessian']
-        train_grad_loss = self.R['train_grad_loss']
-
-        # It is important that the gradients get calculated on the original model
-        # so that the parameters are the original parameters
-        start_time = time.time()
-        subset_newton_dparam = []
-        self_newton_infls = []
-        self_newton_margin_infls = []
-        for i, remove_indices in enumerate(subset_indices):
-            if (i % n_report == 0):
-                print('Computing Newton self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
-
-            hessian_sw = hessian - model.get_hessian_reg(self.train.subset(remove_indices),
-                                                         np.ones(len(remove_indices)), l2_reg=0, verbose=False)
-
-            grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
-            H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss.reshape(1, -1).T).reshape(-1)
-            newton_infl = np.dot(grad_loss, H_inv_grad_loss)
-            subset_newton_dparam.append(H_inv_grad_loss)
-            self_newton_infls.append(newton_infl)
-
-            if model.num_classes == 2:
-                s = np.zeros(self.num_train)
-                s[remove_indices] = 1
-                grad_margin = model.get_total_grad_margin(self.train, s)
-                newton_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
-                self_newton_margin_infls.append(newton_margin_infl)
-
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each newton self-influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
-
-        res['subset_newton_dparam'] = np.array(subset_newton_dparam)
-        res['subset_self_newton_infl'] = np.array(self_newton_infls)
-        if self.num_classes == 2:
-            res['subset_self_newton_margin_infl'] = np.array(self_newton_margin_infls)
-
-        return res
-
-    @phase(10)
-    def fixed_test_newton(self):
-        model = self.get_model()
-        model.load('initial')
-        res = dict()
-
-        hessian = self.R['hessian']
-        fixed_test = self.R['fixed_test']
-        test_grad_loss = model.get_indiv_grad_loss(self.test.subset(fixed_test))
-        train_grad_loss = self.R['train_grad_loss']
-
-        if self.num_classes == 2:
-            test_grad_margin = model.get_indiv_grad_margin(self.test.subset(fixed_test))
-
-        n, n_report = self.num_train, max(self.num_train // 100, 1)
-
-        start_time = time.time()
-        fixed_test_newton_infl = []
-        fixed_test_newton_margin_infl = []
-        for i in range(self.num_train):
-            if (i % n_report == 0):
-                print('Computing fixed test Newton influences for train idx {} out of {}'.format(i, n))
-
-            hessian_sw = hessian - model.get_hessian_reg(self.train.subset([i]),
-                                                         np.ones(1), l2_reg=0, verbose=False)
-
-            grad_loss = train_grad_loss[i, :].reshape(-1, 1)
-            H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
-            newton_infl = np.dot(test_grad_loss, H_inv_grad_loss)
-            fixed_test_newton_infl.append(newton_infl)
-
-            if self.num_classes == 2:
-                newton_margin_infl = np.dot(test_grad_margin, H_inv_grad_loss)
-                fixed_test_newton_margin_infl.append(newton_margin_infl)
-
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each fixed test Newton influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
-
-        subset_indices = self.R['subset_indices']
-        res['fixed_test_newton_infl'] = np.array(fixed_test_newton_infl).T
-        res['subset_fixed_test_newton_infl'] = np.array([
-            np.sum(res['fixed_test_newton_infl'][:, remove_indices], axis=1).reshape(-1)
-            for remove_indices in subset_indices])
-
-        if self.num_classes == 2:
-            res['fixed_test_newton_margin_infl'] = np.array(fixed_test_newton_margin_infl).T
-            res['subset_fixed_test_newton_margin_infl'] = np.array([
-                np.sum(res['fixed_test_newton_margin_infl'][:, remove_indices], axis=1).reshape(-1)
-                for remove_indices in subset_indices])
-
-        return res
-
-    @phase(11)
     def param_changes(self):
         model = self.get_model()
         res = dict()
@@ -547,7 +440,7 @@ class SufficientRegularizationLogreg(Experiment):
 
         return res
 
-    @phase(12)
+    @phase(10)
     def param_change_norms(self):
         res = dict()
 
@@ -559,9 +452,10 @@ class SufficientRegularizationLogreg(Experiment):
             for i, remove_indices in enumerate(self.R['subset_indices'])])
 
         # Compute l2 norms and norms under the Hessian metric of parameter changes
-        for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
+        for dparam_type in ('subset_dparam', 'subset_pred_dparam'):
             dparam = self.R[dparam_type]
             res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
             res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * np.dot(dparam, hessian), axis=1))
 
         return res
+

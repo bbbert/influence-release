@@ -40,9 +40,9 @@ if __name__ == "__main__":
         'append_bias': False,
     }
 
-    regs = {'hospital':     np.logspace(-1, 5, 7),
-            'mnist_small':  np.logspace(-1, 3, 5),
-            'spam':         np.logspace(-2, 2, 5)
+    regs = {'hospital':     np.logspace(-3, 5, 9),
+            'mnist_small':  np.logspace(-2, 3, 6),
+            'spam':         np.logspace(-3, 2, 6)
             }
 
     config = {
