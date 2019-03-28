@@ -15,18 +15,21 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 """
 The fixed directory (../../data/) to save datasets into.
 """
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+DEFAULT_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
 
-def get_dataset_dir(dataset_name):
+def get_dataset_dir(dataset_name, data_dir=None):
     """
     Returns the absolute path to the canonical base directory for a dataset,
     creating it if it does not already exist.
 
-    :param dataset_name: the name of the dataset
-    :return: the absolute path to the dataset's base directory
+    :param dataset_name: The name of the dataset
+    :param data_dir: The path to the base dataset directory. If None, defaults to
+                     a subdirectory of the influence project root.
+    :return: The absolute path to the dataset's base directory
     """
 
-    dataset_dir = os.path.join(DATA_DIR, dataset_name)
+    data_dir = data_dir if data_dir is not None else DEFAULT_DATA_DIR
+    dataset_dir = os.path.join(data_dir, dataset_name)
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
     if not os.path.isdir(dataset_dir):
@@ -287,27 +290,18 @@ def find_distances(target, X, theta=None):
         return np.abs((X - target).dot(theta))
 
 def center_data(datasets):
-    allx = np.concatenate((datasets.train.x, datasets.test.x))
-    valid = None
-    if datasets.validation is not None:
-        allx = np.concatenate((allx, datasets.validation.x))
-    avg = np.mean(allx, axis=0)
-    if datasets.validation is not None:
-        valid = DataSet(datasets.validation.x - avg, datasets.validation.labels)
-    return base.Datasets(train=DataSet(datasets.train.x - avg, datasets.train.labels),
-                         validation=valid,
-                         test=DataSet(datasets.test.x - avg, datasets.test.labels))
+    avg = np.mean(datasets.train.x, axis=0)
+    train, validation, test = [
+        DataSet(dataset.x - avg, dataset.labels) if dataset is not None else None
+        for dataset in (datasets.train, datasets.validation, datasets.test)
+    ]
+    return base.Datasets(train=train, validation=validation, test=test)
 
 def append_bias(datasets):
     def append_bias_x(A):
         return np.hstack((A, np.ones((A.shape[0], 1))))
-
-    if datasets.train is not None:
-        datasets.train._x = append_bias_x(datasets.train._x)
-    if datasets.validation is not None:
-        datasets.validation._x = append_bias_x(datasets.validation._x)
-    if datasets.test is not None:
-        datasets.test._x = append_bias_x(datasets.test._x)
-
-    return datasets
-
+    train, validation, test = [
+        DataSet(append_bias_x(dataset.x), dataset.labels) if dataset is not None else None
+        for dataset in (datasets.train, datasets.validation, datasets.test)
+    ]
+    return base.Datasets(train=train, validation=validation, test=test)

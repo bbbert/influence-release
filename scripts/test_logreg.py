@@ -9,6 +9,8 @@ from experiments.test_logreg import TestLogreg
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run logistic regression')
+    parser.add_argument('--data-dir', default=None, type=str,
+                        help="The base dataset directory")
     parser.add_argument('--out_dir', default=None, type=str,
                         help="The experiment output directory")
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
@@ -25,6 +27,7 @@ if __name__ == '__main__':
         'dataset_id': args.dataset_id,
         'center_data': False,
         'append_bias': False,
+        'data_dir': args.data_dir,
     }
     config = {
         'dataset_config': dataset_config,

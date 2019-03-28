@@ -11,8 +11,8 @@ import zipfile
 from datasets.common import get_dataset_dir, maybe_download, DataSet
 from tensorflow.contrib.learn.python.learn.datasets import base
 
-def load_hospital():
-    dataset_dir = get_dataset_dir('hospital')
+def load_hospital(data_dir=None):
+    dataset_dir = get_dataset_dir('hospital', data_dir=data_dir)
     hospital_path = os.path.join(dataset_dir, 'hospital.npz')
 
     if not os.path.exists(hospital_path):

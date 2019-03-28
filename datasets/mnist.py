@@ -61,7 +61,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
         return dense_to_one_hot(labels, num_classes)
     return labels
 
-def load_mnist(validation_size=5000):
+def load_mnist(validation_size=5000, data_dir=None):
     SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
     TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
@@ -69,7 +69,7 @@ def load_mnist(validation_size=5000):
     TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
     TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
-    dataset_dir = get_dataset_dir('mnist')
+    dataset_dir = get_dataset_dir('mnist', data_dir=data_dir)
 
     local_files = [maybe_download(SOURCE_URL + image_file, image_file, dataset_dir)
                    for image_file in (TRAIN_IMAGES, TRAIN_LABELS,
@@ -107,15 +107,15 @@ def load_mnist(validation_size=5000):
 
     return base.Datasets(train=train, validation=validation, test=test)
 
-def load_small_mnist(validation_size=5000, random_seed=0):
-    dataset_dir = get_dataset_dir('mnist')
+def load_small_mnist(validation_size=5000, random_seed=0, data_dir=None):
+    dataset_dir = get_dataset_dir('mnist', data_dir=data_dir)
     mnist_small_file = 'mnist_small_val-{}_seed-{}.npz'.format(
         validation_size, random_seed)
     mnist_small_path = os.path.join(dataset_dir, mnist_small_file)
 
     if not os.path.exists(mnist_small_path):
         rng = np.random.RandomState(seed=random_seed)
-        data_sets = load_mnist(validation_size)
+        data_sets = load_mnist(validation_size, data_dir=data_dir)
 
         train_images = data_sets.train.x
         train_labels = data_sets.train.labels

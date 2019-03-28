@@ -19,11 +19,14 @@ DATASETS = {
     'cifar10_small': ds.cifar10.load_small_cifar10,
 }
 
-def load_dataset(dataset_id, center_data=False, append_bias=False):
+def load_dataset(dataset_id,
+                 center_data=False,
+                 append_bias=False,
+                 data_dir=None):
     if dataset_id not in DATASETS:
         raise ValueError('Unknown dataset_id {}'.format(dataset_id))
 
-    datasets = DATASETS[dataset_id]()
+    datasets = DATASETS[dataset_id](data_dir=data_dir)
 
     if center_data:
         datasets = ds.common.center_data(datasets)

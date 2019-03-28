@@ -21,11 +21,10 @@ def init_lists(folder):
             a_list.append(f.read().decode("latin-1"))
     return a_list
 
-def process_spam(truncate=None):
+def process_spam(dataset_dir, truncate=None):
     rng = np.random.RandomState(0)
     nlprocessor = NLProcessor(rng)
 
-    dataset_dir = get_dataset_dir('spam')
     spam = init_lists(os.path.join(dataset_dir, 'enron1', 'spam'))
     ham = init_lists(os.path.join(dataset_dir, 'enron1', 'ham'))
 
@@ -59,8 +58,8 @@ def process_spam(truncate=None):
 
     return X_train, Y_train, X_valid, Y_valid, X_test, Y_test
 
-def load_spam(truncate = None):
-    dataset_dir = get_dataset_dir('spam')
+def load_spam(truncate=None, data_dir=None):
+    dataset_dir = get_dataset_dir('spam', data_dir=data_dir)
     spam_path = os.path.join(dataset_dir, 'spam_truncate-{}.npz'.format(truncate))
 
     if not os.path.exists(spam_path):
@@ -72,7 +71,7 @@ def load_spam(truncate = None):
             tarf.extractall(path=dataset_dir)
 
         print("Processing spam")
-        X_train, Y_train, X_valid, Y_valid, X_test, Y_test = process_spam(truncate)
+        X_train, Y_train, X_valid, Y_valid, X_test, Y_test = process_spam(truncate, dataset_dir)
 
         # Convert them to dense matrices
         X_train = X_train.toarray()
