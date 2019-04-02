@@ -16,6 +16,7 @@ import os
 import time
 import math
 import numpy as np
+import tensorflow as tf
 
 from sklearn.cluster import KMeans
 
@@ -580,10 +581,28 @@ class SubsetInfluenceLogreg(Experiment):
             np.linalg.norm(np.sum(train_grad_loss[remove_indices, :], axis=0))
             for i, remove_indices in enumerate(self.R['subset_indices'])])
 
-        # Compute l2 norms and norms under the Hessian metric of parameter changes
-        for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
-            dparam = self.R[dparam_type]
-            res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
-            res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * np.dot(dparam, hessian), axis=1))
 
+        # Skipping this for now
+        # Compute l2 norms and norms under the Hessian metric of parameter changes
+        #for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
+        #    dparam = self.R[dparam_type]
+        #    res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
+        #    res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * np.dot(dparam, hessian), axis=1))
+
+        return res
+
+    @phase(13)
+    def z_norm_spread(self):
+        res = dict()
+        model = self.get_model()
+        model.load('initial')
+
+        # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
+        inputs = model.input_placeholder                            # (?, D)
+
+        z_norms_val = model.get_z_norms(self.train)
+
+        print(z_norms_val.shape)
+
+        res['z_norms'] = np.array(z_norms_val)
         return res

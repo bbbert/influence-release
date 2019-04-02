@@ -233,6 +233,8 @@ class LogisticRegression(Model):
             hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
                               mode="CONSTANT", constant_values=0.0)
 
+        self.z_norms = tf.sqrt(tf.linalg.trace(indiv_hessian))
+
         self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
         self.hessian_of_reg = hess_reg
@@ -442,6 +444,19 @@ class LogisticRegression(Model):
             value_name="Hessians", **kwargs)
         return hessian_reg + hessian_no_reg
 
+    def get_z_norms(self, dataset, **kwargs):
+        batch_size = self.config['hessian_batch_size']
+        z_norms_val = self.batch_evaluate(
+                lambda xs, labels: self.sess.run(self.z_norms, feed_dict={
+                    self.input_placeholder: xs,
+                    self.labels_placeholder: labels,
+                }),
+                lambda v1, v2: np.concatenate((v1,v2)),
+                self.config['hessian_batch_size'],
+                dataset,
+                value_name="z_norms", **kwargs)
+        return z_norms_val
+        
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
         """
         Computes the inverse Hessian vector product with a list of vectors.
