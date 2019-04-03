@@ -459,3 +459,15 @@ class SufficientRegularizationLogreg(Experiment):
 
         return res
 
+    @phase(11)
+    def z_norm_spread(self):
+        res = dict()
+        model = self.get_model()
+        model.load('initial')
+
+        # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
+        z_norms_val = model.get_z_norms(self.train)
+
+        res['z_norms'] = np.array(z_norms_val)
+        return res
+
