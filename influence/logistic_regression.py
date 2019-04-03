@@ -213,9 +213,9 @@ class LogisticRegression(Model):
         if self.num_classes == 2:
             softmax = softmax[:, 1:2]                               # (?, Kp) = (?, 1)
             coeffs = tf.sqrt(softmax*(1-softmax))
-            self.zs = tf.einsum('ai,aj->aj', coeffs,
-                    tf.pad(inputs, [[0, 0], [0, int(self.fit_intercept)]],
-                        mode="CONSTANT", constant_values=1.0))      # (?, D)
+            padded_inputs = tf.pad(inputs, [[0, 0], [0, int(self.fit_intercept)]],
+                    mode="CONSTANT", constant_values=1.0)
+            self.zs = tf.multiply(coeffs, padded_inputs)
         factor = tf.linalg.diag(softmax) - \
             tf.einsum('ai,aj->aij', softmax, softmax)               # (?, Kp, Kp)
         indiv_hessian = tf.reshape(
@@ -449,6 +449,7 @@ class LogisticRegression(Model):
             value_name="Hessians", **kwargs)
         return hessian_reg + hessian_no_reg
 
+    # Computes 2-norms of z_k without any inverse Hessian in the middle
     def get_z_norms_2(self, dataset, **kwargs):
         z_norms_2 = tf.sqrt(tf.linalg.trace(self.indiv_hessian))
         batch_size = self.config['hessian_batch_size']
@@ -462,9 +463,13 @@ class LogisticRegression(Model):
                 value_name="z_norms_2", **kwargs)
         return z_norms_2_val
 
+    # Computes sqrt(z_k^T (Z^T Z+lambda I)^{-1} z_k):
+    # the norms of z_k under the inverse Hessian
     def get_z_norms(self, dataset, **kwargs):
         if self.num_classes != 2:
             return None
+        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
+        self.set_l2_reg(l2_reg)
         batch_size = self.config['hessian_batch_size']
         hessian_reg = self.get_hessian_reg(dataset)
         z_norms_val = self.batch_evaluate(
