@@ -107,6 +107,7 @@ class LogisticRegression(Model):
             name='vectors_placeholder')
         self.inverse_vp = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
                                             tf.transpose(self.vectors_placeholder))
+        self.inverse_quad = tf.einsum('ai,ia->a', self.vectors_placeholder, self.inverse_vp)
 
     def infer(self, input, labels):
         params = []
@@ -210,7 +211,11 @@ class LogisticRegression(Model):
 
         softmax = tf.nn.softmax(logits)                             # (?, K)
         if self.num_classes == 2:
-            softmax = softmax[:, 1:2]                               # (?, Kp)
+            softmax = softmax[:, 1:2]                               # (?, Kp) = (?, 1)
+            coeffs = tf.sqrt(softmax*(1-softmax))
+            self.zs = tf.einsum('ai,aj->aj', coeffs,
+                    tf.pad(inputs, [[0, 0], [0, int(self.fit_intercept)]],
+                        mode="CONSTANT", constant_values=1.0))      # (?, D)
         factor = tf.linalg.diag(softmax) - \
             tf.einsum('ai,aj->aij', softmax, softmax)               # (?, Kp, Kp)
         indiv_hessian = tf.reshape(
@@ -233,7 +238,7 @@ class LogisticRegression(Model):
             hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
                               mode="CONSTANT", constant_values=0.0)
 
-        self.z_norms = tf.sqrt(tf.linalg.trace(indiv_hessian))
+        self.indiv_hessian = indiv_hessian
 
         self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
@@ -444,17 +449,36 @@ class LogisticRegression(Model):
             value_name="Hessians", **kwargs)
         return hessian_reg + hessian_no_reg
 
-    def get_z_norms(self, dataset, **kwargs):
+    def get_z_norms_2(self, dataset, **kwargs):
+        z_norms_2 = tf.sqrt(tf.linalg.trace(self.indiv_hessian))
         batch_size = self.config['hessian_batch_size']
-        z_norms_val = self.batch_evaluate(
-                lambda xs, labels: self.sess.run(self.z_norms, feed_dict={
+        z_norms_2_val = self.batch_evaluate(
+                lambda xs, labels: self.sess.run(z_norms_2, feed_dict={
                     self.input_placeholder: xs,
                     self.labels_placeholder: labels,
                 }),
                 lambda v1, v2: np.concatenate((v1,v2)),
-                self.config['hessian_batch_size'],
-                dataset,
+                batch_size, dataset,
+                value_name="z_norms_2", **kwargs)
+        return z_norms_2_val
+
+    def get_z_norms(self, dataset, **kwargs):
+        if self.num_classes != 2:
+            return None
+        batch_size = self.config['hessian_batch_size']
+        hessian_reg = self.get_hessian_reg(dataset)
+        z_norms_val = self.batch_evaluate(
+                lambda xs, labels: self.sess.run(self.inverse_quad, feed_dict={
+                    self.input_placeholder: xs,
+                    self.labels_placeholder: labels,
+                    self.matrix_placeholder: hessian_reg,
+                    self.vectors_placeholder: self.sess.run(self.zs,
+                    feed_dict={self.input_placeholder:xs, self.labels_placeholder:labels})
+                    }),
+                lambda v1, v2: np.concatenate((v1, v2)),
+                batch_size, dataset,
                 value_name="z_norms", **kwargs)
+        print('z_norms_val shape {}'.format(z_norms_val.shape))
         return z_norms_val
         
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):

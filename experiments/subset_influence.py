@@ -598,11 +598,7 @@ class SubsetInfluenceLogreg(Experiment):
         model.load('initial')
 
         # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
-        inputs = model.input_placeholder                            # (?, D)
-
         z_norms_val = model.get_z_norms(self.train)
-
-        print(z_norms_val.shape)
 
         res['z_norms'] = np.array(z_norms_val)
         return res
