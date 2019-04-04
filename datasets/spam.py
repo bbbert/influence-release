@@ -71,7 +71,7 @@ def load_spam(truncate=None, data_dir=None):
             tarf.extractall(path=dataset_dir)
 
         print("Processing spam")
-        X_train, Y_train, X_valid, Y_valid, X_test, Y_test = process_spam(truncate, dataset_dir)
+        X_train, Y_train, X_valid, Y_valid, X_test, Y_test = process_spam(dataset_dir, truncate)
 
         # Convert them to dense matrices
         X_train = X_train.toarray()
