@@ -142,7 +142,7 @@ class SufficientRegularizationLogreg(Experiment):
         res = dict()
 
         with benchmark("Computing hessian"):
-            res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg)
+            res['hessian'] = hessian = model.get_hessian(self.train, True, l2_reg=l2_reg)
 
         return res
 
@@ -466,8 +466,30 @@ class SufficientRegularizationLogreg(Experiment):
         model.load('initial')
 
         # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
-        z_norms_val = model.get_z_norms(self.train)
+        with benchmark('Computing z_norms'):
+            z_norms_val = model.get_z_norms(self.train, l2_reg=self.R['l2_reg'])
 
         res['z_norms'] = np.array(z_norms_val)
         return res
 
+    # Putting this here because of the way invalidate works.
+    # Really should be in phase 3 - hessians.
+    @phase(12)
+    def compare_hessian_reg(self):
+        res = dict()
+        model = self.get_model()
+        model.load('initial')
+
+        hessian_reg = self.R['hessian']
+        with benchmark('Computing hessian without regularization'):
+            hessian_no_reg = model.get_hessian(self.train, False)
+
+        with benchmark('Computing eigenvalues of both hessians'):
+            hessian_reg_eigs = np.linalg.eig(hessian_reg)
+            hessian_no_reg_eigs = np.linalg.eig(hessian_no_reg)
+
+        res['hessian_reg_eigvals'] = hessian_reg_eigs[0]
+        res['hessian_no_reg_eigvals'] = hessian_no_reg_eigs[0]
+        res['hessian_reg_eigvecs'] = hessian_reg_eigs[1]
+        res['hessian_no_reg_eigvecs'] = hessian_no_reg_eigs[1]
+        return res

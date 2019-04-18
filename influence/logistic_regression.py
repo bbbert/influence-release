@@ -10,6 +10,8 @@ import tensorflow as tf
 import sklearn
 import sklearn.linear_model
 
+import warnings
+
 from influence.model import Model, variable_with_l2_reg, flatten
 from influence.model import get_assigners, get_accuracy
 
@@ -430,14 +432,18 @@ class LogisticRegression(Model):
         return np.vstack(indiv_grad_losses)
 
     def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
-        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-        self.set_l2_reg(l2_reg)
+        warnings.warn('Deprecated: Use get_hessian with boolean parameter reg instead', DeprecationWarning)
+        return self.get_hessian(dataset, True, sample_weights, **kwargs)
+
+    def get_hessian(self, dataset, reg, sample_weights=None, **kwargs):
+        if reg:
+            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
+            self.set_l2_reg(l2_reg)
 
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
         batch_size = self.config['hessian_batch_size']
-        hessian_reg = self.sess.run(self.hessian_of_reg)
         hessian_no_reg = self.batch_evaluate(
             lambda xs, labels, weights: self.sess.run(self.hessian_no_reg, feed_dict={
                 self.input_placeholder: xs,
@@ -447,7 +453,12 @@ class LogisticRegression(Model):
             lambda v1, v2: v1 + v2,
             batch_size, dataset, sample_weights,
             value_name="Hessians", **kwargs)
-        return hessian_reg + hessian_no_reg
+        
+        if reg:
+            hessian_reg = self.sess.run(self.hessian_of_reg)
+            return hessian_reg + hessian_no_reg
+        else:
+            return hessian_no_reg
 
     # Computes 2-norms of z_k without any inverse Hessian in the middle
     def get_z_norms_2(self, dataset, **kwargs):
@@ -471,11 +482,9 @@ class LogisticRegression(Model):
         l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
         self.set_l2_reg(l2_reg)
         batch_size = self.config['hessian_batch_size']
-        hessian_reg = self.get_hessian_reg(dataset)
+        hessian_reg = self.get_hessian(dataset, True, l2_reg=l2_reg)
         z_norms_val = self.batch_evaluate(
                 lambda xs, labels: self.sess.run(self.inverse_quad, feed_dict={
-                    self.input_placeholder: xs,
-                    self.labels_placeholder: labels,
                     self.matrix_placeholder: hessian_reg,
                     self.vectors_placeholder: self.sess.run(self.zs,
                     feed_dict={self.input_placeholder:xs, self.labels_placeholder:labels})
@@ -485,6 +494,16 @@ class LogisticRegression(Model):
                 value_name="z_norms", **kwargs)
         print('z_norms_val shape {}'.format(z_norms_val.shape))
         return z_norms_val
+
+    def get_zs(self, dataset, **kwargs):
+        batch_size = self.config['hessian_batch_size']
+        zs_val = self.batch_evaluate(
+                lambda xs, labels: self.sess.run(self.zs, feed_dict={
+                    self.input_placeholder: xs, self.labels_placeholder: labels}),
+                lambda v1, v2: np.concatenate((v1, v2)),
+                batch_size, dataset,
+                value_name="zs", **kwargs)
+        return zs_val
         
     def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
         """
