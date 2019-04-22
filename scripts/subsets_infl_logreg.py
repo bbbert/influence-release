@@ -33,6 +33,8 @@ if __name__ == "__main__":
                         help="The size of the subset relative to the dataset")
     parser.add_argument('--num-subsets', default=5, type=int,
                         help="The number of subsets per random choice type")
+    parser.add_argument('--inverse-hvp-method', default=None, type=str,
+                        help="The dataset to use")
     args = parser.parse_args()
 
     dataset_config = {
@@ -50,10 +52,23 @@ if __name__ == "__main__":
         'normalized_cross_validation_range': {
             'hospital': (1e-4, 1e-1, 10),
             'mnist_small': (1e-3, 1, 4),
+            'mnist': (1e-3, 1, 4),
             'spam': (1e-4, 1e-1, 4),
+        }[args.dataset_id],
+        'inverse_hvp_method': {
+            'hospital': 'explicit',
+            'mnist_small': 'explicit',
+            'mnist': 'cg',
+            'spam': 'explicit',
         }[args.dataset_id],
         'max_memory': int(args.max_memory),
     }
+
+    if args.inverse_hvp_method is not None:
+        config['inverse_hvp_method'] = args.inverse_hvp_method
+
+    config['skip_newton'] = config['inverse_hvp_method'] != 'explicit'
+    config['skip_z_norms'] = config['inverse_hvp_method'] != 'explicit'
 
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
     exp.run(force_refresh=args.force_refresh,

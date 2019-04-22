@@ -12,7 +12,9 @@ import sklearn.linear_model
 
 import warnings
 
-from influence.model import Model, variable_with_l2_reg, flatten
+from influence.hessians import hessian_vector_product
+from influence.conjugate import conjugate_gradient
+from influence.model import Model, variable_with_l2_reg, flatten, split_like
 from influence.model import get_assigners, get_accuracy
 
 class LogisticRegression(Model):
@@ -110,6 +112,11 @@ class LogisticRegression(Model):
         self.inverse_vp = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
                                             tf.transpose(self.vectors_placeholder))
         self.inverse_quad = tf.einsum('ai,ia->a', self.vectors_placeholder, self.inverse_vp)
+
+        self.vectors_placeholder_split = split_like(self.params, self.vectors_placeholder)
+        self.hessian_vp_reg = tf.concat(hessian_vector_product(self.total_loss_reg,
+                                                               self.params,
+                                                               self.vectors_placeholder_split), 0)
 
     def infer(self, input, labels):
         params = []
@@ -453,7 +460,7 @@ class LogisticRegression(Model):
             lambda v1, v2: v1 + v2,
             batch_size, dataset, sample_weights,
             value_name="Hessians", **kwargs)
-        
+
         if reg:
             hessian_reg = self.sess.run(self.hessian_of_reg)
             return hessian_reg + hessian_no_reg
@@ -465,13 +472,13 @@ class LogisticRegression(Model):
         z_norms_2 = tf.sqrt(tf.linalg.trace(self.indiv_hessian))
         batch_size = self.config['hessian_batch_size']
         z_norms_2_val = self.batch_evaluate(
-                lambda xs, labels: self.sess.run(z_norms_2, feed_dict={
-                    self.input_placeholder: xs,
-                    self.labels_placeholder: labels,
-                }),
-                lambda v1, v2: np.concatenate((v1,v2)),
-                batch_size, dataset,
-                value_name="z_norms_2", **kwargs)
+            lambda xs, labels: self.sess.run(z_norms_2, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            }),
+            lambda v1, v2: np.concatenate((v1,v2)),
+            batch_size, dataset,
+            value_name="z_norms_2", **kwargs)
         return z_norms_2_val
 
     # Computes sqrt(z_k^T (Z^T Z+lambda I)^{-1} z_k):
@@ -484,41 +491,134 @@ class LogisticRegression(Model):
         batch_size = self.config['hessian_batch_size']
         hessian_reg = self.get_hessian(dataset, True, l2_reg=l2_reg)
         z_norms_val = self.batch_evaluate(
-                lambda xs, labels: self.sess.run(self.inverse_quad, feed_dict={
-                    self.matrix_placeholder: hessian_reg,
-                    self.vectors_placeholder: self.sess.run(self.zs,
-                    feed_dict={self.input_placeholder:xs, self.labels_placeholder:labels})
-                    }),
-                lambda v1, v2: np.concatenate((v1, v2)),
-                batch_size, dataset,
-                value_name="z_norms", **kwargs)
+            lambda xs, labels: self.sess.run(self.inverse_quad, feed_dict={
+                self.matrix_placeholder: hessian_reg,
+                self.vectors_placeholder: self.sess.run(self.zs, feed_dict={
+                    self.input_placeholder: xs,
+                    self.labels_placeholder: labels
+                })
+            }),
+            lambda v1, v2: np.concatenate((v1, v2)),
+            batch_size, dataset,
+            value_name="z_norms", **kwargs)
         print('z_norms_val shape {}'.format(z_norms_val.shape))
         return z_norms_val
 
     def get_zs(self, dataset, **kwargs):
         batch_size = self.config['hessian_batch_size']
         zs_val = self.batch_evaluate(
-                lambda xs, labels: self.sess.run(self.zs, feed_dict={
-                    self.input_placeholder: xs, self.labels_placeholder: labels}),
-                lambda v1, v2: np.concatenate((v1, v2)),
-                batch_size, dataset,
-                value_name="zs", **kwargs)
+            lambda xs, labels: self.sess.run(self.zs, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels
+            }),
+            lambda v1, v2: np.concatenate((v1, v2)),
+            batch_size, dataset,
+            value_name="zs", **kwargs)
         return zs_val
-        
-    def get_inverse_hvp_reg(self, dataset, vectors, sample_weights=None, **kwargs):
+
+    def get_hvp(self, vector, dataset, sample_weights=None, reg=True, **kwargs):
+        """
+        Computes the Hessian vector product with a single vector without
+        requiring explicit evaluation of the Hessian.
+
+        :param vectors: A shape (D,) numpy array where D is the total number of parameters
+        :param dataset: The dataset to compute the Hessian on.
+        :param sample_weights: The sample weights for the dataset.
+        :return: A shape (D,) numpy array which contains the Hessian vector product.
+        """
+        if sample_weights is None:
+            sample_weights = np.ones(dataset.num_examples)
+
+        batch_size = self.config['hvp_batch_size']
+
+        def evaluate_fn(xs, labels, weights):
+            return self.sess.run(self.hessian_vp_reg, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+                self.vectors_placeholder: vector.reshape(1, -1),
+            })
+
+        self.set_l2_reg(0)
+        hvp = self.batch_evaluate(
+            evaluate_fn,
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights,
+            value_name="Hessian vector product", **kwargs)
+
+        if reg:
+            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
+            self.set_l2_reg(l2_reg)
+
+            # Provide a dummy data point with weight 0 to obtain the regularization part
+            hvp_of_reg = evaluate_fn(dataset.x[0:1],
+                                     dataset.labels[0:1],
+                                     np.ones(0))
+            hvp += hvp_of_reg
+
+        return hvp.T
+
+    def get_inverse_hvp_reg(self, vectors,
+                            hessian_reg=None,                   # Needed for explicit inversion
+                            dataset=None, sample_weights=None,  # Needed for cg inversion
+                            debug_grad=None,
+                            **kwargs):
         """
         Computes the inverse Hessian vector product with a list of vectors.
-        The Hessian contains l2 regularization.
+        The inverse HVP can be computed two ways, explicitly or via conjugate
+        gradient descent. The Hessian contains l2 regularization.
 
-        :param dataset: The dataset to compute the hessian on.
         :param vectors: A (D, K) numpy array where D is the total number of parameters
+        :param inverse_hvp_method: The method used to compute the inverse HVP.
+                                   Must be 'explicit' or 'cg'.
+        :param hessian_reg: If the method is 'explicit', the Hessian matrix must be
+                            provided here.  Otherwise, it is ignored.
+        :param dataset: If the method is 'cg', the dataset to compute the Hessian on
+                        must be provided. Otherwise, it is ignored.
         :param sample_weights: The sample weights for the dataset.
+        :param debug_grad: Optionally, the loss gradient of a fixed test point
+                           for debugging the cg method. If not provided,
+                           there will be no cg optimization debugging.
         :return: A (D, K) numpy array = hessian^{-1} vectors
         """
         assert vectors.shape[0] == self.params_flat.shape[0]
 
-        hessian_reg = self.get_hessian_reg(dataset, sample_weights, **kwargs)
-        return self.get_inverse_vp(self, hessian_reg, vectors, **kwargs)
+        method = kwargs.get('inverse_hvp_method', self.config['inverse_hvp_method'])
+        if method == "explicit":
+            if hessian_reg is None:
+                raise ValueError('To compute the inverse HVP directly, the Hessian must be provided')
+            return self.get_inverse_vp(hessian_reg, vectors, **kwargs)
+
+        elif method == "cg":
+            if dataset is None:
+                raise ValueError('To compute the inverse HVP with the cg method, '
+                                 'the dataset must be provided.')
+
+            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
+            Ax_fn = lambda x: self.get_hvp(x, dataset, sample_weights, reg=True, **kwargs)
+
+            debug_callback = None
+            verbose_cg = kwargs.get('verbose_cg', False)
+            if verbose_cg:
+                # To debug the conjugate gradient descent, we assume that the
+                # vector in question is the gradient of the loss with respect
+                # to removal of some training point. Then, we calculate the
+                # predicted influence on some other fixed point.
+                def print_function_value(x, f_linear, f_quadratic):
+                    print("Conjugate function value: {}, lin: {}, quad: {}".format(
+                        f_linear + f_quadratic, f_linear, f_quadratic))
+
+                debug_callback = print_function_value
+
+            return np.array([conjugate_gradient(Ax_fn,
+                                                vector,
+                                                debug_callback=debug_callback,
+                                                avextol=self.config['fmin_ncg_avextol'],
+                                                maxiter=self.config['fmin_ncg_maxiter'])
+                             for vector in vectors.T]).T
+
+        else:
+            raise ValueError('Unknown inverse HVP method {}'.format(method))
 
     def get_inverse_vp(self, matrix, vectors, **kwargs):
         inverse_vp = self.sess.run(self.inverse_vp, feed_dict={
@@ -650,4 +750,14 @@ class LogisticRegression(Model):
 
             # Maximum iterations to run sklearn's LBFGS optimization for
             'max_lbfgs_iter': 2048,
+
+            # Default method for inverse hessian vector problem
+            'inverse_hvp_method': 'explicit',
+
+            # Batch size when computing HVP
+            'hvp_batch_size': 4096,
+
+            # Default parameters to conjugate method for inverse HVP
+            'fmin_ncg_avextol': 1e-8,
+            'fmin_ncg_maxiter': 256,
         }

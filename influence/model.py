@@ -286,3 +286,38 @@ def flatten(tensors):
     """
     return tf.concat([tf.reshape(tensor, (-1,)) for tensor in tensors], axis=0)
 
+def split_like(tensors, flat_tensor):
+    """
+    Split a flattened (and possibly batched) tensor back into a list of tensors.
+    If flat_tensor is not batched, then the result will be a list of tensors of the
+    same shape as `tensors`. Otherwise, let [A_{i,0}, ..., A_{i,n_i-1}] be the
+    shape of the ith tensor and D_i = A_{i,0} * ... * A_{i,n_i-1} be its size.
+    Then flat_tensor must be of shape [?, sum_i D_i]. The result will be a
+    list of tensors of shape [?, A_{i,0}, ..., A_{i,n_i-1}].
+
+    :param tensors: A list of tensors of the desired shape to split flat_tensor into.
+    :param flat_tensor: The tensor to split, possibly batched.
+    :return: A list of tensors of the same shape as `tensors`, but possibly batched.
+    """
+    split_sizes, split_shapes = [], []
+    for tensor in tensors:
+        total_dim = 1
+        for dim in tensor.shape:
+            if dim is None:
+                raise ValueError("Source tensors must have concrete shapes.")
+            total_dim *= dim
+        split_sizes.append(int(total_dim))
+        split_shapes.append([int(dim) for dim in tensor.shape])
+
+    split_axis = len(flat_tensor.shape) - 1
+    split_tensors = tf.split(flat_tensor, split_sizes, split_axis)
+    batched_shapes = split_shapes
+    if split_axis != 0:
+        batched_shapes = [[-1] + shape for shape in batched_shapes]
+
+    reshaped_tensors = [
+        tf.reshape(split_tensor, batched_shape)
+        for split_tensor, batched_shape in zip(split_tensors, batched_shapes)
+    ]
+    return reshaped_tensors
+
