@@ -54,12 +54,16 @@ if __name__ == "__main__":
             'mnist_small': (1e-3, 1, 4),
             'mnist': (1e-3, 1, 4),
             'spam': (1e-4, 1e-1, 4),
+            'cifar10_small': (1e-3, 1, 4),
+            'cifar10': (1e-3, 1, 4),
         }[args.dataset_id],
         'inverse_hvp_method': {
             'hospital': 'explicit',
             'mnist_small': 'explicit',
             'mnist': 'cg',
             'spam': 'explicit',
+            'cifar10_small': 'cg',
+            'cifar10': 'cg',
         }[args.dataset_id],
         'max_memory': int(args.max_memory),
     }
