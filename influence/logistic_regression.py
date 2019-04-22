@@ -388,10 +388,14 @@ class LogisticRegression(Model):
         return loss
 
     def get_indiv_loss(self, dataset, **kwargs):
-        indiv_loss = self.sess.run(self.indiv_loss, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-        })
+        batch_size = kwargs.get('loss_batch_size', self.config['loss_batch_size'])
+        indiv_loss = self.batch_evaluate(
+            lambda xs, labels: self.sess.run(self.indiv_loss, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            }),
+            lambda v1, v2: np.concatenate([v1, v2]),
+            batch_size, dataset, value_name="Individual loss", **kwargs)
         return indiv_loss
 
     def get_total_grad_loss(self, dataset, sample_weights=None, reg=False, **kwargs):
@@ -632,10 +636,14 @@ class LogisticRegression(Model):
     def get_indiv_margin(self, dataset, **kwargs):
         assert self.num_classes == 2, "Margins only supported for binary classification"
 
-        indiv_margin = self.sess.run(self.margins, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-        })
+        batch_size = kwargs.get('loss_batch_size', self.config['loss_batch_size'])
+        indiv_margin = self.batch_evaluate(
+            lambda xs, labels: self.sess.run(self.margins, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            }),
+            lambda v1, v2: np.concatenate([v1, v2]),
+            batch_size, dataset, value_name="Individual margin", **kwargs)
         return indiv_margin
 
     def get_indiv_grad_margin(self, dataset, **kwargs):
@@ -741,6 +749,9 @@ class LogisticRegression(Model):
 
             # The method to use for evaluating individual gradients
             'indiv_grad_method': 'batched',
+
+            # The batch size to use for evaluating individual losses
+            'loss_batch_size': 4096,
 
             # The batch size to use when evaluating gradients using the batched method
             'grad_batch_size': 4096,
