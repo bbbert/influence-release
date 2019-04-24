@@ -160,7 +160,7 @@ class Model(object):
 
     def get_indiv_grad_loss_from_total_grad(self, dataset, **kwargs):
         indiv_grad_loss = self.batch_evaluate(
-            lambda xs, labels: [self.get_total_grad_loss(DataSet(xs, labels), **kwargs)],
+            lambda xs, labels: [self.get_total_grad_loss(DataSet(xs, labels), l2_reg=0, **kwargs)],
             lambda v1, v2: v1.extend(v2) or v1,
             1, dataset, value_name="Gradients")
         return np.array(indiv_grad_loss)
@@ -244,6 +244,7 @@ def variable_with_l2_reg(name, shape, stddev=None, l2_reg=None):
     if l2_reg is not None:
       l2_reg_loss = tf.multiply(tf.nn.l2_loss(var), l2_reg,
                                 name='{}_l2_reg_loss'.format(name))
+      tf.add_to_collection('regularization', l2_reg_loss)
       tf.add_to_collection('losses', l2_reg_loss)
 
     return var

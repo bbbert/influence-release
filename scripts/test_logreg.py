@@ -32,6 +32,7 @@ if __name__ == '__main__':
     config = {
         'dataset_config': dataset_config,
         'fit_intercept': args.fit_intercept,
+        'l2_reg': 1,
     }
     force_refresh = args.force_refresh
 

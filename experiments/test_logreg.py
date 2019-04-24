@@ -57,15 +57,16 @@ class TestLogreg(Experiment):
         results = dict()
 
         model = self.get_model()
+        l2_reg = self.config['l2_reg']
 
         with benchmark("Training the model"):
-            model.fit(self.datasets.train)
-            model.print_model_eval(self.datasets)
+            model.fit(self.datasets.train, l2_reg=l2_reg)
+            model.print_model_eval(self.datasets, l2_reg=l2_reg)
 
         with benchmark("Computing losses"):
-            results['train_loss'] = model.get_total_loss(self.datasets.train, reg=True)
+            results['train_loss'] = model.get_total_loss(self.datasets.train, l2_reg=l2_reg)
             results['indiv_train_loss'] = model.get_indiv_loss(self.datasets.train)
-            results['test_loss'] = model.get_total_loss(self.datasets.test, reg=True)
+            results['test_loss'] = model.get_total_loss(self.datasets.test, l2_reg=l2_reg)
             results['indiv_test_loss'] = model.get_indiv_loss(self.datasets.test)
 
         with benchmark("Saving model"):
@@ -77,6 +78,7 @@ class TestLogreg(Experiment):
     def retrain_model(self):
         model = self.get_model()
         model.load('initial')
+        l2_reg = self.config['l2_reg']
 
         print("Sanity check: reloading the model gives same train and test losses")
         indiv_train_loss = model.get_indiv_loss(self.datasets.train)
@@ -87,8 +89,8 @@ class TestLogreg(Experiment):
 
         print("Sanity check: warm fit is fast")
         with benchmark("Performing warm fit"):
-            model.warm_fit(self.datasets.train)
-            model.print_model_eval(self.datasets)
+            model.warm_fit(self.datasets.train, l2_reg=l2_reg)
+            model.print_model_eval(self.datasets, l2_reg=l2_reg)
 
         print("Sanity check: force-recreate the model and load it")
         del self.model
@@ -130,9 +132,9 @@ class TestLogreg(Experiment):
     def compare_sklearn(self):
         model = self.get_model()
         model.load('initial')
+        l2_reg = self.config['l2_reg']
 
         with benchmark("Copying params to sklearn"):
-            l2_reg = self.model_config['default_l2_reg']
             C = 1.0 / l2_reg
             multi_class = "ovr" if self.model_config['arch']['num_classes'] == 2 else "multinomial"
             fit_intercept = self.model_config['arch']['fit_intercept']
@@ -159,13 +161,15 @@ class TestLogreg(Experiment):
 
     @phase(4)
     def hess(self):
+        result = dict()
         model = self.get_model()
         model.load('initial')
+        l2_reg = self.config['l2_reg']
 
-        result = dict()
         with benchmark("Computing hessian"):
-            result['hessian_reg'] = model.get_hessian_reg(self.datasets.train,
-                                                          **self.eval_args)
+            result['hessian_reg'] = model.get_hessian(self.datasets.train,
+                                                      l2_reg=l2_reg,
+                                                      **self.eval_args)
 
         if result['hessian_reg'].shape[0] < 800:
             with benchmark("Finding hessian eigenvalues"):
@@ -195,10 +199,10 @@ class TestLogreg(Experiment):
 
     @phase(6)
     def margins(self):
+        result = dict()
         model = self.get_model()
         model.load('initial')
-
-        result = dict()
+        l2_reg = self.config['l2_reg']
 
         if model.num_classes == 2:
             print("Model is binary, we can compute margins.")
@@ -211,7 +215,7 @@ class TestLogreg(Experiment):
             s[some_indices] = 1
 
             with benchmark("Computing margin gradients"):
-                grad_margin = model.get_total_grad_margin(self.datasets.train, s)
+                grad_margin = model.get_total_grad_margin(self.datasets.train, s, l2_reg=l2_reg)
 
             result['indiv_margin'] = indiv_margin
             result['grad_margin'] = grad_margin

@@ -47,7 +47,7 @@ class LogisticRegression(Model):
             tf.float32,
             shape=(None,),
             name='sample_weights_placeholder')
-        self.l2_reg = tf.Variable(self.config['default_l2_reg'],
+        self.l2_reg = tf.Variable(0,
                                   dtype=tf.float32,
                                   trainable=False,
                                   name='l2_reg')
@@ -62,6 +62,7 @@ class LogisticRegression(Model):
             self.logits,
             self.one_hot_labels,
             self.sample_weights_placeholder)
+        self.loss_reg_term = tf.add_n(tf.get_collection('regularization'), name="loss_reg_term")
         self.predictions = self.predict(self.logits)
         self.accuracy = get_accuracy(self.logits, self.labels_placeholder)
 
@@ -251,7 +252,7 @@ class LogisticRegression(Model):
 
         self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
-        self.hessian_of_reg = hess_reg
+        self.hessian_reg_term = hess_reg
 
     def predict(self, logits):
         predictions = tf.nn.softmax(logits, name='predictions')
@@ -289,7 +290,7 @@ class LogisticRegression(Model):
         assign_op, placeholder = self.l2_reg_assigner
         self.sess.run(assign_op, feed_dict={placeholder: l2_reg})
 
-    def fit(self, dataset, sample_weights=None, **kwargs):
+    def fit(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         """
         Resets the model's parameters and trains the model to fit the dataset.
         Minimizes the objective:
@@ -304,7 +305,6 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
         C = 1.0 / l2_reg
         sklearn_model = sklearn.linear_model.LogisticRegression(
             C=C,
@@ -320,7 +320,7 @@ class LogisticRegression(Model):
                           sample_weight=sample_weights)
         self.copy_sklearn_model_to_params(sklearn_model)
 
-    def warm_fit(self, dataset, sample_weights=None, **kwargs):
+    def warm_fit(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         """
         Trains the model to fit the dataset, using the previously stored
         parameters as a starting point.
@@ -331,7 +331,6 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
         C = 1.0 / l2_reg
         sklearn_model = sklearn.linear_model.LogisticRegression(
             C=C,
@@ -369,26 +368,31 @@ class LogisticRegression(Model):
 
     # Extracting information
 
-    def get_total_loss(self, dataset, sample_weights=None, reg=False, **kwargs):
+    def get_loss_reg_term(self, l2_reg):
+        if l2_reg == 0:
+            return 0
+        else:
+            self.set_l2_reg(l2_reg)
+            return self.sess.run(self.loss_reg_term)
+
+    def get_total_loss(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        if reg:
-            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-            self.set_l2_reg(l2_reg)
-            loss_op = self.total_loss_reg
-        else:
-            loss_op = self.total_loss_no_reg
-
-        loss = self.sess.run(loss_op, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-            self.sample_weights_placeholder: sample_weights,
-        })
-        return loss
+        batch_size = self.config['loss_batch_size']
+        total_loss_no_reg = self.batch_evaluate(
+            lambda xs, labels, weights: self.sess.run(self.total_loss_no_reg, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+            }),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights,
+            value_name="Total loss", **kwargs)
+        return total_loss_no_reg + self.get_loss_reg_term(l2_reg)
 
     def get_indiv_loss(self, dataset, **kwargs):
-        batch_size = kwargs.get('loss_batch_size', self.config['loss_batch_size'])
+        batch_size = self.config['loss_batch_size']
         indiv_loss = self.batch_evaluate(
             lambda xs, labels: self.sess.run(self.indiv_loss, feed_dict={
                 self.input_placeholder: xs,
@@ -398,23 +402,34 @@ class LogisticRegression(Model):
             batch_size, dataset, value_name="Individual loss", **kwargs)
         return indiv_loss
 
-    def get_total_grad_loss(self, dataset, sample_weights=None, reg=False, **kwargs):
+    def get_total_grad_loss(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        if reg:
-            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-            self.set_l2_reg(l2_reg)
-            grad_loss_op = self.total_grad_loss_reg_flat
-        else:
-            grad_loss_op = self.total_grad_loss_no_reg_flat
+        self.set_l2_reg(0)
+        batch_size = self.config['grad_batch_size']
+        grad_loss_no_reg = self.batch_evaluate(
+            lambda xs, labels, weights: self.sess.run(self.total_grad_loss_no_reg_flat, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+            }),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights,
+            value_name="Total grad loss", **kwargs)
 
-        grad_loss = self.sess.run(grad_loss_op, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-            self.sample_weights_placeholder: sample_weights,
-        })
-        return grad_loss
+        if l2_reg == 0:
+            grad_loss_reg = grad_loss_no_reg
+        else:
+            self.set_l2_reg(l2_reg)
+            grad_loss_reg_term = self.sess.run(self.total_grad_loss_reg_flat, feed_dict={
+                self.input_placeholder: dataset.x[0:1, :],
+                self.labels_placeholder: dataset.labels[0:1],
+                self.sample_weights_placeholder: np.zeros(1),
+            })
+            grad_loss_reg = grad_loss_no_reg + grad_loss_reg_term
+
+        return grad_loss_reg
 
     def get_indiv_grad_loss(self, dataset, **kwargs):
         method = self.config['indiv_grad_method']
@@ -442,18 +457,11 @@ class LogisticRegression(Model):
             batch_size, dataset, value_name="Gradients", **kwargs)
         return np.vstack(indiv_grad_losses)
 
-    def get_hessian_reg(self, dataset, sample_weights=None, **kwargs):
-        warnings.warn('Deprecated: Use get_hessian with boolean parameter reg instead', DeprecationWarning)
-        return self.get_hessian(dataset, True, sample_weights, **kwargs)
-
-    def get_hessian(self, dataset, reg, sample_weights=None, **kwargs):
-        if reg:
-            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-            self.set_l2_reg(l2_reg)
-
+    def get_hessian(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
+        self.set_l2_reg(l2_reg)
         batch_size = self.config['hessian_batch_size']
         hessian_no_reg = self.batch_evaluate(
             lambda xs, labels, weights: self.sess.run(self.hessian_no_reg, feed_dict={
@@ -465,11 +473,11 @@ class LogisticRegression(Model):
             batch_size, dataset, sample_weights,
             value_name="Hessians", **kwargs)
 
-        if reg:
-            hessian_reg = self.sess.run(self.hessian_of_reg)
-            return hessian_reg + hessian_no_reg
-        else:
+        if l2_reg == 0:
             return hessian_no_reg
+        else:
+            hessian_reg_term = self.sess.run(self.hessian_reg_term)
+            return hessian_no_reg + hessian_reg_term
 
     # Computes 2-norms of z_k without any inverse Hessian in the middle
     def get_z_norms_2(self, dataset, **kwargs):
@@ -487,10 +495,9 @@ class LogisticRegression(Model):
 
     # Computes sqrt(z_k^T (Z^T Z+lambda I)^{-1} z_k):
     # the norms of z_k under the inverse Hessian
-    def get_z_norms(self, dataset, **kwargs):
+    def get_z_norms(self, dataset, l2_reg=0, **kwargs):
         if self.num_classes != 2:
             return None
-        l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
         self.set_l2_reg(l2_reg)
         batch_size = self.config['hessian_batch_size']
         hessian_reg = self.get_hessian(dataset, True, l2_reg=l2_reg)
@@ -520,7 +527,7 @@ class LogisticRegression(Model):
             value_name="zs", **kwargs)
         return zs_val
 
-    def get_hvp(self, vector, dataset, sample_weights=None, reg=True, **kwargs):
+    def get_hvp(self, vector, dataset, sample_weights=None, l2_reg=0, **kwargs):
         """
         Computes the Hessian vector product with a single vector without
         requiring explicit evaluation of the Hessian.
@@ -544,27 +551,27 @@ class LogisticRegression(Model):
             })
 
         self.set_l2_reg(0)
-        hvp = self.batch_evaluate(
+        hvp_no_reg = self.batch_evaluate(
             evaluate_fn,
             lambda v1, v2: v1 + v2,
             batch_size, dataset, sample_weights,
             value_name="Hessian vector product", **kwargs)
 
-        if reg:
-            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
+        if l2_reg == 0:
+            return hvp_no_reg.T
+        else:
             self.set_l2_reg(l2_reg)
 
             # Provide a dummy data point with weight 0 to obtain the regularization part
-            hvp_of_reg = evaluate_fn(dataset.x[0:1],
-                                     dataset.labels[0:1],
-                                     np.ones(0))
-            hvp += hvp_of_reg
-
-        return hvp.T
+            hvp_reg_term = evaluate_fn(dataset.x[0:1],
+                                       dataset.labels[0:1],
+                                       np.ones(0))
+            return (hvp_no_reg + hvp_reg_term).T
 
     def get_inverse_hvp_reg(self, vectors,
                             hessian_reg=None,                   # Needed for explicit inversion
                             dataset=None, sample_weights=None,  # Needed for cg inversion
+                            l2_reg=0,
                             debug_grad=None,
                             **kwargs):
         """
@@ -598,8 +605,7 @@ class LogisticRegression(Model):
                 raise ValueError('To compute the inverse HVP with the cg method, '
                                  'the dataset must be provided.')
 
-            l2_reg = kwargs.get('l2_reg', self.config['default_l2_reg'])
-            Ax_fn = lambda x: self.get_hvp(x, dataset, sample_weights, reg=True, **kwargs)
+            Ax_fn = lambda x: self.get_hvp(x, dataset, sample_weights, l2_reg=l2_reg, **kwargs)
 
             debug_callback = None
             verbose_cg = kwargs.get('verbose_cg', False)
@@ -636,7 +642,7 @@ class LogisticRegression(Model):
     def get_indiv_margin(self, dataset, **kwargs):
         assert self.num_classes == 2, "Margins only supported for binary classification"
 
-        batch_size = kwargs.get('loss_batch_size', self.config['loss_batch_size'])
+        batch_size = self.config['loss_batch_size']
         indiv_margin = self.batch_evaluate(
             lambda xs, labels: self.sess.run(self.margins, feed_dict={
                 self.input_placeholder: xs,
@@ -665,41 +671,35 @@ class LogisticRegression(Model):
         if sample_weights is None:
             sample_weights = np.ones(dataset.num_examples)
 
-        grad_margin = self.sess.run(self.total_grad_margin, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-            self.sample_weights_placeholder: sample_weights,
-        })
-        return grad_margin
+        batch_size = self.config['grad_batch_size']
+        total_grad_margin = self.batch_evaluate(
+            lambda xs, labels, weights: self.sess.run(self.total_grad_margin, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+                self.sample_weights_placeholder: weights,
+            }),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, sample_weights, value_name="Margin gradients", **kwargs)
+        return total_grad_margin
 
     # Evaluation
 
-    def print_model_eval(self, datasets):
+    def get_model_evaluation(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
+        loss_no_reg = self.get_total_loss(dataset, sample_weights, 0, **kwargs)
+        loss_reg = loss_no_reg + self.get_loss_reg_term(l2_reg)
+        accuracy = self.get_accuracy(dataset)
+        return loss_reg, loss_no_reg, accuracy
+
+    def print_model_eval(self, datasets, l2_reg=0):
         params_flat = self.get_params_flat()
 
-        train_loss_reg, train_loss_no_reg, train_acc = self.sess.run(
-            [self.total_loss_reg, self.total_loss_no_reg, self.accuracy],
-            feed_dict={
-                self.input_placeholder: datasets.train.x,
-                self.labels_placeholder: datasets.train.labels,
-                self.sample_weights_placeholder: np.ones(datasets.train.x.shape[0]),
-            })
+        train_loss_reg, train_loss_no_reg, train_acc = \
+            self.get_model_evaluation(datasets.train, l2_reg=l2_reg)
 
-        test_loss_reg, test_loss_no_reg, test_acc = self.sess.run(
-            [self.total_loss_reg, self.total_loss_no_reg, self.accuracy],
-            feed_dict={
-                self.input_placeholder: datasets.test.x,
-                self.labels_placeholder: datasets.test.labels,
-                self.sample_weights_placeholder: np.ones(datasets.test.x.shape[0]),
-            })
+        test_loss_reg, test_loss_no_reg, test_acc = \
+            self.get_model_evaluation(datasets.test, l2_reg=l2_reg)
 
-        train_total_grad_loss = self.sess.run(
-            [self.total_grad_loss_no_reg_flat],
-            feed_dict={
-                self.input_placeholder: datasets.train.x,
-                self.labels_placeholder: datasets.train.labels,
-                self.sample_weights_placeholder: np.ones(datasets.train.x.shape[0]),
-            })
+        train_total_grad_loss = self.get_total_grad_loss(datasets.train, l2_reg=l2_reg)
 
         print('Train loss (w reg) on all data: %s' %
               (train_loss_reg / datasets.train.num_examples))
@@ -716,16 +716,20 @@ class LogisticRegression(Model):
         print('Norm of the params: %s' % np.linalg.norm(params_flat))
 
     def get_accuracy(self, dataset):
-        accuracy = self.sess.run(self.accuracy, feed_dict={
-            self.input_placeholder: dataset.x,
-            self.labels_placeholder: dataset.labels,
-        })
+        batch_size = self.config['loss_batch_size']
+        accuracy = self.batch_evaluate(
+            lambda xs, labels: self.sess.run(self.accuracy, feed_dict={
+                self.input_placeholder: xs,
+                self.labels_placeholder: labels,
+            }) * len(labels),
+            lambda v1, v2: v1 + v2,
+            batch_size, dataset, value_name="Accuracy") / dataset.num_examples
         return accuracy
 
     def get_predictions(self, X):
         sample_weights = np.ones(X.shape[0])
         predictions = self.sess.run(self.predictions, feed_dict={
-            self.input_placeholder: X
+            self.input_placeholder: X,
         })
         return predictions
 
@@ -742,10 +746,6 @@ class LogisticRegression(Model):
         return {
             # The tensorflow initialization seed
             'tf_init_seed': 0,
-
-            # The L2 regularization to use if not overriden by a keyword
-            # argument to model methods
-            'default_l2_reg': 1,
 
             # The method to use for evaluating individual gradients
             'indiv_grad_method': 'batched',
