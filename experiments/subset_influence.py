@@ -123,7 +123,9 @@ class SubsetInfluenceLogreg(Experiment):
             model.save('initial')
 
         res['initial_train_losses'] = model.get_indiv_loss(self.train)
+        res['initial_train_accuracy'] = model.get_accuracy(self.train)
         res['initial_test_losses'] = model.get_indiv_loss(self.test)
+        res['initial_test_accuracy'] = model.get_accuracy(self.test)
         if self.num_classes == 2:
             res['initial_train_margins'] = model.get_indiv_margin(self.train)
             res['initial_test_margins'] = model.get_indiv_margin(self.test)
