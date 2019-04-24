@@ -222,10 +222,15 @@ class LogisticRegression(Model):
         softmax = tf.nn.softmax(logits)                             # (?, K)
         if self.num_classes == 2:
             softmax = softmax[:, 1:2]                               # (?, Kp) = (?, 1)
-            coeffs = tf.sqrt(softmax*(1-softmax))
-            padded_inputs = tf.pad(inputs, [[0, 0], [0, int(self.fit_intercept)]],
-                    mode="CONSTANT", constant_values=1.0)
-            self.zs = tf.multiply(coeffs, padded_inputs)
+            coeffs = tf.sqrt(softmax*(1-softmax))                   # (?, 1)
+
+            padded_inputs = inputs
+            if self.fit_intercept:
+                padded_inputs = tf.pad(inputs, [[0, 0], [0, 1]],
+                                       mode="CONSTANT",
+                                       constant_values=1.0)         # (?, D)
+
+            self.zs = tf.multiply(coeffs, padded_inputs)            # (?, D)
         factor = tf.linalg.diag(softmax) - \
             tf.einsum('ai,aj->aij', softmax, softmax)               # (?, Kp, Kp)
         indiv_hessian = tf.reshape(
@@ -247,8 +252,6 @@ class LogisticRegression(Model):
 
             hess_reg = tf.pad(hess_reg, [[0, Kp], [0, Kp]],
                               mode="CONSTANT", constant_values=0.0)
-
-        self.indiv_hessian = indiv_hessian
 
         self.hessian_no_reg = tf.einsum('aij,a->ij', indiv_hessian, sample_weights)
         self.hessian_reg = self.hessian_no_reg + hess_reg
@@ -479,45 +482,15 @@ class LogisticRegression(Model):
             hessian_reg_term = self.sess.run(self.hessian_reg_term)
             return hessian_no_reg + hessian_reg_term
 
-    # Computes 2-norms of z_k without any inverse Hessian in the middle
-    def get_z_norms_2(self, dataset, **kwargs):
-        z_norms_2 = tf.sqrt(tf.linalg.trace(self.indiv_hessian))
-        batch_size = self.config['hessian_batch_size']
-        z_norms_2_val = self.batch_evaluate(
-            lambda xs, labels: self.sess.run(z_norms_2, feed_dict={
-                self.input_placeholder: xs,
-                self.labels_placeholder: labels,
-            }),
-            lambda v1, v2: np.concatenate((v1,v2)),
-            batch_size, dataset,
-            value_name="z_norms_2", **kwargs)
-        return z_norms_2_val
-
-    # Computes sqrt(z_k^T (Z^T Z+lambda I)^{-1} z_k):
-    # the norms of z_k under the inverse Hessian
-    def get_z_norms(self, dataset, l2_reg=0, **kwargs):
-        if self.num_classes != 2:
-            return None
-        self.set_l2_reg(l2_reg)
-        batch_size = self.config['hessian_batch_size']
-        hessian_reg = self.get_hessian(dataset, True, l2_reg=l2_reg)
-        z_norms_val = self.batch_evaluate(
-            lambda xs, labels: self.sess.run(self.inverse_quad, feed_dict={
-                self.matrix_placeholder: hessian_reg,
-                self.vectors_placeholder: self.sess.run(self.zs, feed_dict={
-                    self.input_placeholder: xs,
-                    self.labels_placeholder: labels
-                })
-            }),
-            lambda v1, v2: np.concatenate((v1, v2)),
-            batch_size, dataset,
-            value_name="z_norms", **kwargs)
-        print('z_norms_val shape {}'.format(z_norms_val.shape))
-        return z_norms_val
-
     def get_zs(self, dataset, **kwargs):
+        """
+        Computes Z values, such that the Hessian (without regularization) is H = ZZ^T
+        Only works for binary models.
+        """
+        assert self.num_classes == 2, "Z value computation only implemented for binary models"
+
         batch_size = self.config['hessian_batch_size']
-        zs_val = self.batch_evaluate(
+        zs = self.batch_evaluate(
             lambda xs, labels: self.sess.run(self.zs, feed_dict={
                 self.input_placeholder: xs,
                 self.labels_placeholder: labels
@@ -525,9 +498,22 @@ class LogisticRegression(Model):
             lambda v1, v2: np.concatenate((v1, v2)),
             batch_size, dataset,
             value_name="zs", **kwargs)
-        return zs_val
+        return zs
 
-    def get_hvp(self, vector, dataset, sample_weights=None, l2_reg=0, **kwargs):
+    def get_hvp(self, vectors, dataset, sample_weights=None, l2_reg=0, **kwargs):
+        """
+        Computes the Hessian vector product with a set of vectors without
+        requiring explicit evaluation of the Hessian.
+
+        :param vectors: A shape (D, K) numpy array where D is the total number of parameters
+        :param dataset: The dataset to compute the Hessian on.
+        :param sample_weights: The sample weights for the dataset.
+        :return: A shape (D, K) numpy array which contains the Hessian vector product.
+        """
+        return np.array([ self.get_hvp(vector, dataset, sample_weights, l2_reg, **kwargs)
+                          for vector in vectors.T ]).T
+
+    def get_hvp_single(self, vector, dataset, sample_weights=None, l2_reg=0, **kwargs):
         """
         Computes the Hessian vector product with a single vector without
         requiring explicit evaluation of the Hessian.
@@ -548,7 +534,7 @@ class LogisticRegression(Model):
                 self.labels_placeholder: labels,
                 self.sample_weights_placeholder: weights,
                 self.vectors_placeholder: vector.reshape(1, -1),
-            })
+            }).T
 
         self.set_l2_reg(0)
         hvp_no_reg = self.batch_evaluate(
@@ -558,7 +544,7 @@ class LogisticRegression(Model):
             value_name="Hessian vector product", **kwargs)
 
         if l2_reg == 0:
-            return hvp_no_reg.T
+            return hvp_no_reg
         else:
             self.set_l2_reg(l2_reg)
 
@@ -566,14 +552,14 @@ class LogisticRegression(Model):
             hvp_reg_term = evaluate_fn(dataset.x[0:1],
                                        dataset.labels[0:1],
                                        np.ones(0))
-            return (hvp_no_reg + hvp_reg_term).T
+            return hvp_no_reg + hvp_reg_term
 
-    def get_inverse_hvp_reg(self, vectors,
-                            hessian_reg=None,                   # Needed for explicit inversion
-                            dataset=None, sample_weights=None,  # Needed for cg inversion
-                            l2_reg=0,
-                            debug_grad=None,
-                            **kwargs):
+    def get_inverse_hvp(self, vectors,
+                        hessian_reg=None,                   # Needed for explicit inversion
+                        dataset=None, sample_weights=None,  # Needed for cg inversion
+                        l2_reg=0,
+                        debug_grad=None,
+                        **kwargs):
         """
         Computes the inverse Hessian vector product with a list of vectors.
         The inverse HVP can be computed two ways, explicitly or via conjugate
@@ -605,7 +591,7 @@ class LogisticRegression(Model):
                 raise ValueError('To compute the inverse HVP with the cg method, '
                                  'the dataset must be provided.')
 
-            Ax_fn = lambda x: self.get_hvp(x, dataset, sample_weights, l2_reg=l2_reg, **kwargs)
+            Ax_fn = lambda x: self.get_hvp_single(x, dataset, sample_weights, l2_reg=l2_reg, **kwargs)
 
             debug_callback = None
             verbose_cg = kwargs.get('verbose_cg', False)

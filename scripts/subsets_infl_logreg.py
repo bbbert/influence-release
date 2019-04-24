@@ -73,6 +73,7 @@ if __name__ == "__main__":
 
     config['skip_newton'] = config['inverse_hvp_method'] != 'explicit'
     config['skip_z_norms'] = config['inverse_hvp_method'] != 'explicit'
+    config['skip_param_change_norms'] = config['inverse_hvp_method'] != 'explicit'
 
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
     exp.run(force_refresh=args.force_refresh,

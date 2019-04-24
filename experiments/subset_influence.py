@@ -95,7 +95,7 @@ class SubsetInfluenceLogreg(Experiment):
                     val_indices = np.arange(fold_begin, fold_end)
 
                     model.fit(self.train.subset(train_indices), l2_reg=reg)
-                    fold_loss = model.get_total_loss(self.train.subset(val_indices), reg=False)
+                    fold_loss = model.get_total_loss(self.train.subset(val_indices), l2_reg=0)
                     cv_error += fold_loss
 
             cv_errors[i] = cv_error
@@ -119,7 +119,7 @@ class SubsetInfluenceLogreg(Experiment):
 
         with benchmark("Training original model"):
             model.fit(self.train, l2_reg=l2_reg)
-            model.print_model_eval(self.datasets)
+            model.print_model_eval(self.datasets, l2_reg=l2_reg)
             model.save('initial')
 
         res['initial_train_losses'] = model.get_indiv_loss(self.train)
@@ -166,7 +166,7 @@ class SubsetInfluenceLogreg(Experiment):
 
         if self.config['inverse_hvp_method'] == 'explicit':
             with benchmark("Computing hessian"):
-                res['hessian'] = hessian = model.get_hessian_reg(self.train, l2_reg=l2_reg)
+                res['hessian'] = hessian = model.get_hessian(self.train, l2_reg=l2_reg)
         elif self.config['inverse_hvp_method'] == 'cg':
             print("Not computing explicit hessian.")
             res['hessian'] = None
@@ -198,7 +198,7 @@ class SubsetInfluenceLogreg(Experiment):
 
             with benchmark('Scalar infl for all training points on test_idx {}.'.format(test_idx)):
                 test_grad_loss = model.get_indiv_grad_loss(single_test_point).reshape(-1, 1)
-                test_grad_loss_H_inv = model.get_inverse_hvp_reg(test_grad_loss, **inverse_hvp_args).reshape(-1)
+                test_grad_loss_H_inv = model.get_inverse_hvp(test_grad_loss, **inverse_hvp_args).reshape(-1)
                 pred_infl = np.dot(self.R['train_grad_loss'], test_grad_loss_H_inv)
                 fixed_test_grad_loss.append(test_grad_loss)
                 fixed_test_pred_infl.append(pred_infl)
@@ -206,7 +206,7 @@ class SubsetInfluenceLogreg(Experiment):
             if self.num_classes == 2:
                 with benchmark('Scalar margin infl for all training points on test_idx {}.'.format(test_idx)):
                     test_grad_margin = model.get_total_grad_margin(single_test_point).reshape(-1, 1)
-                    test_grad_margin_H_inv = model.get_inverse_hvp_reg(test_grad_margin, **inverse_hvp_args).reshape(-1)
+                    test_grad_margin_H_inv = model.get_inverse_hvp(test_grad_margin, **inverse_hvp_args).reshape(-1)
                     pred_margin_infl = np.dot(self.R['train_grad_loss'], test_grad_margin_H_inv)
                     fixed_test_pred_margin_infl.append(pred_margin_infl)
 
@@ -400,7 +400,7 @@ class SubsetInfluenceLogreg(Experiment):
                 print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
-            H_inv_grad_loss = model.get_inverse_hvp_reg(grad_loss.reshape(-1, 1), **inverse_hvp_args).reshape(-1)
+            H_inv_grad_loss = model.get_inverse_hvp(grad_loss.reshape(-1, 1), **inverse_hvp_args).reshape(-1)
             pred_infl = np.dot(grad_loss, H_inv_grad_loss)
             subset_pred_dparam.append(H_inv_grad_loss)
             self_pred_infls.append(pred_infl)
@@ -497,8 +497,8 @@ class SubsetInfluenceLogreg(Experiment):
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0).reshape(-1, 1)
             if self.config['inverse_hvp_method'] == 'explicit':
-                hessian_sw = hessian - model.get_hessian_reg(self.train.subset(remove_indices),
-                                                             np.ones(len(remove_indices)), l2_reg=0, verbose=False)
+                hessian_sw = hessian - model.get_hessian(self.train.subset(remove_indices),
+                                                         np.ones(len(remove_indices)), l2_reg=0, verbose=False)
                 H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
@@ -510,7 +510,7 @@ class SubsetInfluenceLogreg(Experiment):
                     'verbose': False,
                     'verbose_cg': True,
                 }
-                H_inv_grad_loss = model.get_inverse_hvp_reg(grad_loss, **inverse_hvp_args).reshape(-1)
+                H_inv_grad_loss = model.get_inverse_hvp(grad_loss, **inverse_hvp_args).reshape(-1)
 
             newton_infl = np.dot(grad_loss.reshape(-1), H_inv_grad_loss)
             subset_newton_dparam.append(H_inv_grad_loss)
@@ -565,8 +565,8 @@ class SubsetInfluenceLogreg(Experiment):
 
             grad_loss = train_grad_loss[i, :].reshape(-1, 1)
             if self.config['inverse_hvp_method'] == 'explicit':
-                hessian_sw = hessian - model.get_hessian_reg(self.train.subset([i]),
-                                                             np.ones(1), l2_reg=0, verbose=False)
+                hessian_sw = hessian - model.get_hessian(self.train.subset([i]),
+                                                         np.ones(1), l2_reg=0, verbose=False)
                 H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
@@ -578,7 +578,7 @@ class SubsetInfluenceLogreg(Experiment):
                     'verbose': False,
                     'verbose_cg': True,
                 }
-                H_inv_grad_loss = model.get_inverse_hvp_reg(grad_loss, **inverse_hvp_args).reshape(-1)
+                H_inv_grad_loss = model.get_inverse_hvp(grad_loss, **inverse_hvp_args).reshape(-1)
 
             newton_infl = np.dot(test_grad_loss, H_inv_grad_loss)
             fixed_test_newton_infl.append(newton_infl)
@@ -630,7 +630,13 @@ class SubsetInfluenceLogreg(Experiment):
 
     @phase(12)
     def param_change_norms(self):
+        if self.config['skip_param_change_norms']:
+            return dict()
+
         res = dict()
+        model = self.get_model()
+        l2_reg = self.R['cv_l2_reg']
+        model.load('initial')
 
         # Compute l2 norm of gradient
         train_grad_loss = self.R['train_grad_loss']
@@ -638,27 +644,42 @@ class SubsetInfluenceLogreg(Experiment):
             np.linalg.norm(np.sum(train_grad_loss[remove_indices, :], axis=0))
             for remove_indices in self.R['subset_indices']])
 
-        # Skipping this for now
         # Compute l2 norms and norms under the Hessian metric of parameter changes
-        # hessian = self.R['hessian']
-        # for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
-        #     dparam = self.R[dparam_type]
-        #     res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
-        #     res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * np.dot(dparam, hessian), axis=1))
+        l2_reg = self.R['cv_l2_reg']
+        hessian = self.R['hessian']
+        for dparam_type in ('subset_dparam', 'subset_pred_dparam', 'subset_newton_dparam'):
+            dparam = self.R[dparam_type]
+            res[dparam_type + '_l2_norm'] = np.linalg.norm(dparam, axis=1)
+            if self.config['inverse_hvp_method'] == 'explicit':
+                hvp = np.dot(dparam, hessian)
+            else:
+                hvp = model.get_hvp(dparam.T, self.train, l2_reg=l2_reg)
+            res[dparam_type + '_hessian_norm'] = np.sqrt(np.sum(dparam * hvp, axis=1))
 
         return res
 
     @phase(13)
-    def z_norm_spread(self):
-        if self.config['skip_z_norms']:
+    def z_norms(self):
+        if self.config['skip_z_norms'] or self.num_classes != 2:
             return dict()
 
         res = dict()
         model = self.get_model()
+        l2_reg = self.R['cv_l2_reg']
         model.load('initial')
 
-        # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
-        z_norms_val = model.get_z_norms(self.train)
+        inverse_hvp_args = {
+            'hessian_reg': self.R['hessian'],
+            'dataset': self.train,
+            'l2_reg': l2_reg,
+            'verbose': False,
+            'verbose_cg': True,
+        }
 
-        res['z_norms'] = np.array(z_norms_val)
+        # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
+        res['zs'] = zs = model.get_zs(self.train)
+        ihvp_zs = model.get_inverse_hvp(zs.T, **inverse_hvp_args).T
+        res['z_norms'] = np.linalg.norm(zs, axis=1)
+        res['z_hessian_norms'] = np.sqrt(np.sum(zs * ihvp_zs, axis=1))
+
         return res
