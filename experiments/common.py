@@ -198,7 +198,7 @@ class Experiment(object):
         :param result_path: The path to the result.
         :return: The result dictionary.
         """
-        data = np.load(result_path)
+        data = np.load(result_path, allow_pickle=True)
         result = dict(data)
         for key, value in result.items():
             if value.shape == tuple():
