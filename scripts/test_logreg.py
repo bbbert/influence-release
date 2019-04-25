@@ -11,7 +11,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run logistic regression')
     parser.add_argument('--data-dir', default=None, type=str,
                         help="The base dataset directory")
-    parser.add_argument('--out_dir', default=None, type=str,
+    parser.add_argument('--out-dir', default=None, type=str,
                         help="The experiment output directory")
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
                         help="Ignore previously saved results")
