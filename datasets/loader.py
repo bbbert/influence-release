@@ -15,6 +15,7 @@ DATASETS = {
     'mnist_small': ds.mnist.load_small_mnist,
     'spam': ds.spam.load_spam,
     'hospital': ds.hospital.load_hospital,
+    'hospital_preprocess': ds.hospital.load_hospital_preprocess,
     'cifar10': ds.cifar10.load_cifar10,
     'cifar10_small': ds.cifar10.load_small_cifar10,
 }

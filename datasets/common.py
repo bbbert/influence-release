@@ -71,7 +71,7 @@ class DataSet(object):
 
     Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
     """
-    def __init__(self, x, labels, rng=None, seed=0):
+    def __init__(self, x, labels, feature_names=None, rng=None, seed=0):
         """
         Initializes the dataset.
 
@@ -99,6 +99,8 @@ class DataSet(object):
         self._x = x
         self._labels = labels
         self.initialize_rng(rng=rng, seed=seed)
+
+        self.feature_names = feature_names
 
     @property
     def x(self):
