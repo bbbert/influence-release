@@ -59,9 +59,10 @@ class HospitalGroups(Experiment):
 
     @property
     def run_id(self):
-        return "{}_seed-{}".format(
+        return "{}_seed-{}_num-perturb-{}".format(
             self.config['dataset_config']['dataset_id'],
-            self.config['subset_seed'])
+            self.config['subset_seed'],
+            self.config['num_perturb'])
 
     def get_model(self):
         if not hasattr(self, 'model'):
@@ -314,19 +315,44 @@ class HospitalGroups(Experiment):
 
         return subset_fixed_test_infl, avg_test_infl
 
-    def perturb_train(self, indices, new_label_fn):
-        x = self.train.x.copy()
-        labels = self.train.labels.copy()
-        for i in indices:
-            labels[i] = new_label_fn(x[i, :], labels[i])
-        return DataSet(x, labels, feature_names=self.train.feature_names)
-
     @phase(8)
-    def perturb_subsets(self):
+    def retrain(self):
         model = self.get_model()
+        model.load('initial')
         l2_reg = self.R['cv_l2_reg']
         res = dict()
 
+        subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
+        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
+
+        start_time = time.time()
+        train_losses, test_losses = [], []
+        for i, remove_indices in enumerate(subset_indices):
+            if (i % n_report == 0):
+                print('Retraining model {} out of {} (tag={}, size={})'.format(
+                    i, n, subset_tags[i], len(remove_indices)))
+
+            s = np.ones(self.num_train)
+            s[remove_indices] = 0
+
+            model.warm_fit(self.train, s, l2_reg=l2_reg)
+            model.save('subset_{}'.format(i))
+            train_losses.append(model.get_indiv_loss(self.train))
+            test_losses.append(model.get_indiv_loss(self.test))
+
+            if (i % n_report == 0):
+                cur_time = time.time()
+                time_per_retrain = (cur_time - start_time) / (i + 1)
+                remaining_time = time_per_retrain * (n - i - 1)
+                print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
+
+        res['subset_train_losses'] = np.array(train_losses)
+        res['subset_test_losses'] = np.array(test_losses)
+
+        return res
+
+    @phase(9)
+    def perturb_subsets(self):
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
         size_threshold = self.num_train / 4
         perturb_subsets = [ i for i, subset in enumerate(subset_indices)
@@ -338,7 +364,32 @@ class HospitalGroups(Experiment):
         rng.shuffle(perturb_subsets)
         perturb_subsets = perturb_subsets[:num_perturb]
 
+        res = dict()
+        res.update(self.perturb_retrain_subsets(perturb_subsets, perturb_type="flip"))
+        res.update(self.perturb_retrain_subsets(perturb_subsets, perturb_type="set0"))
+        res.update(self.perturb_retrain_subsets(perturb_subsets, perturb_type="set1"))
+        return res
+
+    def perturb_train(self, indices, new_label_fn):
+        x = self.train.x.copy()
+        labels = self.train.labels.copy()
+        for i in indices:
+            labels[i] = new_label_fn(x[i, :], labels[i])
+        return DataSet(x, labels, feature_names=self.train.feature_names)
+
+    def perturb_retrain_subsets(self, perturb_subsets, perturb_type):
+        model = self.get_model()
+        l2_reg = self.R['cv_l2_reg']
+
+        subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
         n, n_report = len(perturb_subsets), max(len(perturb_subsets) // 100, 1)
+
+        if perturb_type == "flip":
+            perturbation = lambda x, label: 1 - label
+        elif perturb_type == "set0":
+            perturbation = lambda x, label: 0
+        elif perturb_type == "set1":
+            perturbation = lambda x, label: 1
 
         # For each small subset, try perturbing its labels, and see if its group/indiv influence rank changes
         start_time = time.time()
@@ -350,13 +401,9 @@ class HospitalGroups(Experiment):
         perturb_subset_avg_test_infl = []
         for i, subset_idx in enumerate(perturb_subsets):
             if (i % n_report == 0):
-                print('Perturbing subset {} out of {} (tag={})'.format(i, n, subset_tags[subset_idx]))
+                print('Perturbing ({}) subset {} out of {} (tag={})'.format(perturb_type, i, n, subset_tags[subset_idx]))
 
             indices = subset_indices[subset_idx]
-            flip_label = lambda x, label: 1 - label
-            set_to_0 = lambda x, label: 0
-            set_to_1 = lambda x, label: 1
-            perturbation = flip_label
             perturbed_dataset = self.perturb_train(indices, perturbation)
 
             # retrain
@@ -387,12 +434,13 @@ class HospitalGroups(Experiment):
                 remaining_time = time_per_vp * (n - i - 1)
                 print('Each perturbed subset takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
 
-        res['perturb_subsets'] = perturb_subsets
-        res['perturb_self_infl'] = perturb_self_infl
-        res['perturb_subset_self_infl'] = perturb_subset_self_infl
-        res['perturb_fixed_test_infl'] = perturb_fixed_test_infl
-        res['perturb_avg_test_infl'] = perturb_avg_test_infl
-        res['perturb_subset_fixed_test_infl'] = perturb_subset_fixed_test_infl
-        res['perturb_subset_avg_test_infl'] = perturb_subset_avg_test_infl
-
+        res = dict()
+        prefix = 'perturb_{}_'.format(perturb_type)
+        res[prefix + 'subsets'] = perturb_subsets
+        res[prefix + 'self_infl'] = perturb_self_infl
+        res[prefix + 'subset_self_infl'] = perturb_subset_self_infl
+        res[prefix + 'fixed_test_infl'] = perturb_fixed_test_infl
+        res[prefix + 'avg_test_infl'] = perturb_avg_test_infl
+        res[prefix + 'subset_fixed_test_infl'] = perturb_subset_fixed_test_infl
+        res[prefix + 'subset_avg_test_infl'] = perturb_subset_avg_test_infl
         return res
