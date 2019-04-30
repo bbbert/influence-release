@@ -751,10 +751,7 @@ class SubsetInfluenceLogreg(Experiment):
             return tag
         return map(simplify_tag, self.R['subset_tags'])
 
-    def plot_self_influence(self):
-        if 'subset_self_actl_infl' not in self.R: return
-        if 'subset_self_pred_infl' not in self.R: return
-
+    def get_subtitle(self):
         if self.subset_choice_type == "types":
             subtitle='{}, {} subsets per type, proportion {}'.format(
                 self.dataset_id, self.num_subsets, self.config['subset_rel_size'])
@@ -763,6 +760,12 @@ class SubsetInfluenceLogreg(Experiment):
                 self.dataset_id, self.num_subsets,
                 self.config['subset_min_rel_size'],
                 self.config['subset_max_rel_size'])
+        return subtitle
+
+    def plot_self_influence(self):
+        if 'subset_self_actl_infl' not in self.R: return
+        if 'subset_self_pred_infl' not in self.R: return
+
         subset_tags = self.get_simple_subset_tags()
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -771,7 +774,7 @@ class SubsetInfluenceLogreg(Experiment):
                                    self.R['subset_self_pred_infl'],
                                    label=subset_tags,
                                    title='Group self-influence',
-                                   subtitle=subtitle)
+                                   subtitle=self.get_subtitle())
         fig.savefig(os.path.join(self.plot_dir, 'self-influence_loss.png'),
                     bbox_inches='tight')
 
@@ -782,7 +785,7 @@ class SubsetInfluenceLogreg(Experiment):
                                        self.R['subset_self_pred_margin_infl'],
                                        label=subset_tags,
                                        title='Group margin self-influence',
-                                       subtitle=subtitle)
+                                       subtitle=self.get_subtitle())
             fig.savefig(os.path.join(self.plot_dir, 'self-influence_margin.png'),
                         bbox_inches='tight')
 
@@ -790,42 +793,58 @@ class SubsetInfluenceLogreg(Experiment):
         if 'subset_fixed_test_actl_infl' not in self.R: return
         if 'subset_fixed_test_pred_infl' not in self.R: return
 
-        if self.subset_choice_type == "types":
-            subtitle='{}, {} subsets per type, proportion {}'.format(
-                self.dataset_id, self.num_subsets, self.config['subset_rel_size'])
-        elif self.subset_choice_type == "range":
-            subtitle='{}, {} subsets per type, proportion {}-{}'.format(
-                self.dataset_id, self.num_subsets,
-                self.config['subset_min_rel_size'],
-                self.config['subset_max_rel_size'])
         subset_tags = self.get_simple_subset_tags()
 
-        for test_idx in self.R['fixed_test']:
+        for i, test_idx in enumerate(self.R['fixed_test']):
             fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
             plot_influence_correlation(ax[0][0],
-                                       self.R['subset_fixed_test_actl_infl'],
-                                       self.R['subset_fixed_test_pred_infl'],
+                                       self.R['subset_fixed_test_actl_infl'][:, i],
+                                       self.R['subset_fixed_test_pred_infl'][:, i],
                                        label=subset_tags,
                                        title='Group influence on test pt {}'.format(test_idx),
-                                       subtitle=subtitle)
+                                       subtitle=self.get_subtitle())
             fig.savefig(os.path.join(self.plot_dir, 'fixed-test-influence-{}_loss.png'.format(test_idx)),
                         bbox_inches='tight')
 
             if self.num_classes == 2:
                 fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
                 plot_influence_correlation(ax[0][0],
-                                           self.R['subset_fixed_test_actl_margin_infl'],
-                                           self.R['subset_fixed_test_pred_margin_infl'],
+                                           self.R['subset_fixed_test_actl_margin_infl'][:, i],
+                                           self.R['subset_fixed_test_pred_margin_infl'][:, i],
                                            label=subset_tags,
                                            title='Group margin influence on test pt {}'.format(test_idx),
-                                           subtitle=subtitle)
+                                           subtitle=self.get_subtitle())
                 fig.savefig(os.path.join(self.plot_dir, 'fixed-test-influence-{}_margin.png'.format(test_idx)),
                             bbox_inches='tight')
 
     def plot_subset_sizes(self):
         if self.subset_choice_type != "range": return
 
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_against_subset_size(ax[0][0],
+                                 self.R['subset_tags'],
+                                 self.R['subset_indices'],
+                                 self.R['subset_self_pred_infl'],
+                                 title='Group self-influence',
+                                 ylabel='Self-influence',
+                                 subtitle=self.get_subtitle())
+        fig.savefig(os.path.join(self.plot_dir, 'sizes_self-influence_loss.png'),
+                    bbox_inches='tight')
+
+        for i, test_idx in enumerate(self.R['fixed_test']):
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+            plot_against_subset_size(ax[0][0],
+                                     self.R['subset_tags'],
+                                     self.R['subset_indices'],
+                                     self.R['subset_fixed_test_pred_infl'][:, i],
+                                     title='Group influence on test pt {}'.format(test_idx),
+                                     subtitle=self.get_subtitle())
+            fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-influence-{}_loss.png'.format(test_idx)),
+                        bbox_inches='tight')
+
+
     def plot_all(self):
         self.plot_self_influence()
         self.plot_fixed_test_influence()
         self.plot_z_norms()
+        self.plot_subset_sizes()
