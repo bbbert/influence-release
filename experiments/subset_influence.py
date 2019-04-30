@@ -52,18 +52,31 @@ class SubsetInfluenceLogreg(Experiment):
         self.num_train = self.datasets.train.num_examples
         self.num_classes = self.model_config['arch']['num_classes']
         self.num_subsets = self.config['num_subsets']
-        self.subset_size = int(self.num_train * self.config['subset_rel_size'])
+        if self.config['subset_choice_type'] == "types":
+            self.subset_size = int(self.num_train * self.config['subset_rel_size'])
+        elif self.config['subset_choice_type'] == "range":
+            self.subset_min_size = int(self.num_train * self.config['subset_min_rel_size'])
+            self.subset_max_size = int(self.num_train * self.config['subset_max_rel_size'])
 
     experiment_id = "ss_logreg"
 
     @property
     def run_id(self):
-        return "{}_ihvp-{}_seed-{}_size-{}_num-{}".format(
-            self.config['dataset_config']['dataset_id'],
-            self.config['inverse_hvp_method'],
-            self.config['subset_seed'],
-            self.config['subset_rel_size'],
-            self.config['num_subsets'])
+        if self.config['subset_choice_type'] == "types":
+            return "{}_ihvp-{}_seed-{}_size-{}_num-{}".format(
+                self.config['dataset_config']['dataset_id'],
+                self.config['inverse_hvp_method'],
+                self.config['subset_seed'],
+                self.config['subset_rel_size'],
+                self.config['num_subsets'])
+        elif self.config['subset_choice_type'] == "range":
+            return "{}_ihvp-{}_seed-{}_sizes-{}-{}_num-{}".format(
+                self.config['dataset_config']['dataset_id'],
+                self.config['inverse_hvp_method'],
+                self.config['subset_seed'],
+                self.config['subset_min_rel_size'],
+                self.config['subset_max_rel_size'],
+                self.config['num_subsets'])
 
     def get_model(self):
         if not hasattr(self, 'model'):
@@ -218,20 +231,22 @@ class SubsetInfluenceLogreg(Experiment):
 
         return res
 
-    def get_random_subsets(self, rng):
+    def get_random_subsets(self, rng, subset_sizes=None):
         subsets = []
         for i in range(self.num_subsets):
-            subsets.append(rng.choice(self.num_train, self.subset_size, replace=False))
+            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+            subsets.append(rng.choice(self.num_train, subset_size, replace=False))
         return np.array(subsets)
 
-    def get_scalar_infl_tails(self, rng, pred_infl):
-        window = 2 * self.subset_size
-        assert window < self.num_train
+    def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes=None):
         scalar_infl_indices = np.argsort(pred_infl).reshape(-1)
         pos_subsets, neg_subsets = [], []
         for i in range(self.num_subsets):
-            neg_subsets.append(rng.choice(scalar_infl_indices[:window], self.subset_size, replace=False))
-            pos_subsets.append(rng.choice(scalar_infl_indices[-window:], self.subset_size, replace=False))
+            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+            window = 2 * subset_size
+            assert window < self.num_train
+            neg_subsets.append(rng.choice(scalar_infl_indices[:window], subset_size, replace=False))
+            pos_subsets.append(rng.choice(scalar_infl_indices[-window:], subset_size, replace=False))
         return np.array(neg_subsets), np.array(pos_subsets)
 
     def get_same_grad_dir(self, rng, train_grad_loss):
@@ -294,6 +309,20 @@ class SubsetInfluenceLogreg(Experiment):
     @phase(5)
     def pick_subsets(self):
         rng = np.random.RandomState(self.config['subset_seed'])
+
+        if self.config['subset_choice_type'] == "types":
+            tagged_subsets = self.pick_subsets_many_types(rng)
+        elif self.config['subset_choice_type'] == "range":
+            tagged_subsets = self.pick_subsets_size_range(rng)
+
+        subset_tags = [tag for tag, subset in tagged_subsets]
+        subset_indices = [subset for tag, subset in tagged_subsets]
+
+        subset_sizes = np.unique([len(subset) for tag, subset in tagged_subsets])
+
+        return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
+
+    def pick_subsets_many_types(self, rng):
         tagged_subsets = []
 
         with benchmark("Random subsets"):
@@ -320,12 +349,27 @@ class SubsetInfluenceLogreg(Experiment):
             same_grad_subsets, cluster_label, cluster_labels = self.get_same_grad_dir(rng, self.R['train_grad_loss'])
             tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
 
-        subset_tags = [tag for tag, subset in tagged_subsets]
-        subset_indices = [subset for tag, subset in tagged_subsets]
+        return tagged_subsets
 
-        subset_sizes = np.unique([len(subset) for tag, subset in tagged_subsets])
+    def pick_subsets_size_range(self, rng):
+        tagged_subsets = []
+        subset_sizes = np.linspace(self.subset_min_size,
+                                   self.subset_max_size,
+                                   self.num_subsets).astype(np.int)
 
-        return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
+        with benchmark("Random subsets"):
+            random_subsets = self.get_random_subsets(rng, subset_sizes=subset_sizes)
+            tagged_subsets += [('random', s) for s in random_subsets]
+
+        with benchmark("Scalar infl tail subsets"):
+            for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
+                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl,
+                                                                                subset_sizes=subset_sizes)
+                tagged_subsets += [('neg_tail_test-{}'.format(test_idx), s) for s in neg_tail_subsets]
+                tagged_subsets += [('pos_tail_test-{}'.format(test_idx), s) for s in pos_tail_subsets]
+                print('Found scalar infl tail subsets for test idx {}.'.format(test_idx))
+
+        return tagged_subsets
 
     @phase(6)
     def retrain(self):

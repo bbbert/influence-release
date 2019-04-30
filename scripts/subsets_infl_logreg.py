@@ -29,10 +29,21 @@ if __name__ == "__main__":
                         help="The dataset to use")
     parser.add_argument('--subset-seed', default=0, type=int,
                         help="The seed to use for subset selection")
+    parser.add_argument('--subset-choice-type', default="types", type=str,
+                        help="The types of subsets to evaluate.")
+
+    # For subset-choice-type = "types"
     parser.add_argument('--subset-rel-size', default=0.1, type=float,
                         help="The size of the subset relative to the dataset")
     parser.add_argument('--num-subsets', default=5, type=int,
                         help="The number of subsets per random choice type")
+
+    # For subset-choice-type = "range"
+    parser.add_argument('--subset-min-rel-size', default=0.0025, type=float,
+                        help="The minimum size of a subset relative to the dataset")
+    parser.add_argument('--subset-max-rel-size', default=0.25, type=float,
+                        help="The maximum size of a subset relative to the dataset")
+
     parser.add_argument('--inverse-hvp-method', default=None, type=str,
                         help="The dataset to use")
     args = parser.parse_args()
@@ -46,7 +57,10 @@ if __name__ == "__main__":
     config = {
         'dataset_config': dataset_config,
         'subset_seed': args.subset_seed,
+        'subset_choice_type': args.subset_choice_type,
         'subset_rel_size': args.subset_rel_size,
+        'subset_min_rel_size': args.subset_min_rel_size,
+        'subset_max_rel_size': args.subset_max_rel_size,
         'num_subsets': args.num_subsets,
         'cross_validation_folds': 5,
         'normalized_cross_validation_range': {
