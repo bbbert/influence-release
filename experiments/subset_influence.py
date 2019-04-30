@@ -3,13 +3,13 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-
 import datasets as ds
 import datasets.loader
 import datasets.mnist
 from datasets.common import DataSet
 from experiments.common import Experiment, collect_phases, phase
 from experiments.benchmark import benchmark
+from experiments.plot import *
 from influence.logistic_regression import LogisticRegression
 
 import os
@@ -17,6 +17,7 @@ import time
 import math
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 from sklearn.cluster import KMeans
 
@@ -49,27 +50,32 @@ class SubsetInfluenceLogreg(Experiment):
         self.model_config = model_config
 
         # Convenience member variables
+        self.dataset_id = self.config['dataset_config']['dataset_id']
         self.num_train = self.datasets.train.num_examples
         self.num_classes = self.model_config['arch']['num_classes']
         self.num_subsets = self.config['num_subsets']
-        if self.config['subset_choice_type'] == "types":
+        if self.subset_choice_type == "types":
             self.subset_size = int(self.num_train * self.config['subset_rel_size'])
-        elif self.config['subset_choice_type'] == "range":
+        elif self.subset_choice_type == "range":
             self.subset_min_size = int(self.num_train * self.config['subset_min_rel_size'])
             self.subset_max_size = int(self.num_train * self.config['subset_max_rel_size'])
 
     experiment_id = "ss_logreg"
 
     @property
+    def subset_choice_type(self):
+        return self.config.get('subset_choice_type', 'types')
+
+    @property
     def run_id(self):
-        if self.config['subset_choice_type'] == "types":
+        if self.subset_choice_type == "types":
             return "{}_ihvp-{}_seed-{}_size-{}_num-{}".format(
                 self.config['dataset_config']['dataset_id'],
                 self.config['inverse_hvp_method'],
                 self.config['subset_seed'],
                 self.config['subset_rel_size'],
                 self.config['num_subsets'])
-        elif self.config['subset_choice_type'] == "range":
+        elif self.subset_choice_type == "range":
             return "{}_ihvp-{}_seed-{}_sizes-{}-{}_num-{}".format(
                 self.config['dataset_config']['dataset_id'],
                 self.config['inverse_hvp_method'],
@@ -310,9 +316,9 @@ class SubsetInfluenceLogreg(Experiment):
     def pick_subsets(self):
         rng = np.random.RandomState(self.config['subset_seed'])
 
-        if self.config['subset_choice_type'] == "types":
+        if self.subset_choice_type == "types":
             tagged_subsets = self.pick_subsets_many_types(rng)
-        elif self.config['subset_choice_type'] == "range":
+        elif self.subset_choice_type == "range":
             tagged_subsets = self.pick_subsets_size_range(rng)
 
         subset_tags = [tag for tag, subset in tagged_subsets]
@@ -729,3 +735,97 @@ class SubsetInfluenceLogreg(Experiment):
         res['z_hessian_norms'] = np.sqrt(np.sum(zs * ihvp_zs, axis=1))
 
         return res
+
+    def plot_z_norms(self):
+        if 'z_norms' not in self.R: return
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_z_norms(ax[0][0], self.R['z_norms'], self.dataset_id)
+        fig.savefig(os.path.join(self.plot_dir, 'z_norms.png'),
+                    bbox_inches='tight')
+
+    def get_simple_subset_tags(self):
+        def simplify_tag(tag):
+            if 'pos_tail_test' in tag: return 'pos_tail_test'
+            elif 'neg_tail_test' in tag: return 'neg_tail_test'
+            return tag
+        return map(simplify_tag, self.R['subset_tags'])
+
+    def plot_self_influence(self):
+        if 'subset_self_actl_infl' not in self.R: return
+        if 'subset_self_pred_infl' not in self.R: return
+
+        if self.subset_choice_type == "types":
+            subtitle='{}, {} subsets per type, proportion {}'.format(
+                self.dataset_id, self.num_subsets, self.config['subset_rel_size'])
+        elif self.subset_choice_type == "range":
+            subtitle='{}, {} subsets per type, proportion {}-{}'.format(
+                self.dataset_id, self.num_subsets,
+                self.config['subset_min_rel_size'],
+                self.config['subset_max_rel_size'])
+        subset_tags = self.get_simple_subset_tags()
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_influence_correlation(ax[0][0],
+                                   self.R['subset_self_actl_infl'],
+                                   self.R['subset_self_pred_infl'],
+                                   label=subset_tags,
+                                   title='Group self-influence',
+                                   subtitle=subtitle)
+        fig.savefig(os.path.join(self.plot_dir, 'self-influence_loss.png'),
+                    bbox_inches='tight')
+
+        if self.num_classes == 2:
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+            plot_influence_correlation(ax[0][0],
+                                       self.R['subset_self_actl_margin_infl'],
+                                       self.R['subset_self_pred_margin_infl'],
+                                       label=subset_tags,
+                                       title='Group margin self-influence',
+                                       subtitle=subtitle)
+            fig.savefig(os.path.join(self.plot_dir, 'self-influence_margin.png'),
+                        bbox_inches='tight')
+
+    def plot_fixed_test_influence(self):
+        if 'subset_fixed_test_actl_infl' not in self.R: return
+        if 'subset_fixed_test_pred_infl' not in self.R: return
+
+        if self.subset_choice_type == "types":
+            subtitle='{}, {} subsets per type, proportion {}'.format(
+                self.dataset_id, self.num_subsets, self.config['subset_rel_size'])
+        elif self.subset_choice_type == "range":
+            subtitle='{}, {} subsets per type, proportion {}-{}'.format(
+                self.dataset_id, self.num_subsets,
+                self.config['subset_min_rel_size'],
+                self.config['subset_max_rel_size'])
+        subset_tags = self.get_simple_subset_tags()
+
+        for test_idx in self.R['fixed_test']:
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+            plot_influence_correlation(ax[0][0],
+                                       self.R['subset_fixed_test_actl_infl'],
+                                       self.R['subset_fixed_test_pred_infl'],
+                                       label=subset_tags,
+                                       title='Group influence on test pt {}'.format(test_idx),
+                                       subtitle=subtitle)
+            fig.savefig(os.path.join(self.plot_dir, 'fixed-test-influence-{}_loss.png'.format(test_idx)),
+                        bbox_inches='tight')
+
+            if self.num_classes == 2:
+                fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+                plot_influence_correlation(ax[0][0],
+                                           self.R['subset_fixed_test_actl_margin_infl'],
+                                           self.R['subset_fixed_test_pred_margin_infl'],
+                                           label=subset_tags,
+                                           title='Group margin influence on test pt {}'.format(test_idx),
+                                           subtitle=subtitle)
+                fig.savefig(os.path.join(self.plot_dir, 'fixed-test-influence-{}_margin.png'.format(test_idx)),
+                            bbox_inches='tight')
+
+    def plot_subset_sizes(self):
+        if self.subset_choice_type != "range": return
+
+    def plot_all(self):
+        self.plot_self_influence()
+        self.plot_fixed_test_influence()
+        self.plot_z_norms()

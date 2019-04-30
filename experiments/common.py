@@ -160,6 +160,18 @@ class Experiment(object):
         """
         return self.get_base_dir(self.out_dir, self.experiment_id, self.run_id)
 
+    @property
+    def plot_dir(self):
+        """
+        The path to the plots subdirectory of the experiment.
+        """
+        plot_dir = os.path.join(self.base_dir, 'plots')
+        if not os.path.exists(plot_dir):
+            os.makedirs(plot_dir)
+        if not os.path.isdir(plot_dir):
+            raise Exception('{} already exists but is not a directory.'.format(base_id))
+        return plot_dir
+
     def get_result_path(self, phase_index):
         """
         Returns the path to save the result of a phase in.
