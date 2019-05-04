@@ -115,9 +115,9 @@ class LogisticRegression(Model):
         self.inverse_quad = tf.einsum('ai,ia->a', self.vectors_placeholder, self.inverse_vp)
 
         self.vectors_placeholder_split = split_like(self.params, self.vectors_placeholder)
-        self.hessian_vp_reg = tf.concat(hessian_vector_product(self.total_loss_reg,
-                                                               self.params,
-                                                               self.vectors_placeholder_split), 0)
+        self.hessian_vp_reg = flatten(hessian_vector_product(self.total_loss_reg,
+                                                             self.params,
+                                                             self.vectors_placeholder_split))
 
     def infer(self, input, labels):
         params = []
@@ -510,7 +510,7 @@ class LogisticRegression(Model):
         :param sample_weights: The sample weights for the dataset.
         :return: A shape (D, K) numpy array which contains the Hessian vector product.
         """
-        return np.array([ self.get_hvp(vector, dataset, sample_weights, l2_reg, **kwargs)
+        return np.array([ self.get_hvp_single(vector, dataset, sample_weights, l2_reg, **kwargs)
                           for vector in vectors.T ]).T
 
     def get_hvp_single(self, vector, dataset, sample_weights=None, l2_reg=0, **kwargs):

@@ -226,7 +226,7 @@ class Experiment(object):
         :param result_path: The path to the result.
         :param result: A dictionary representing the result of a phase.
         """
-        np.savez(result_path, **result)
+        np.savez(result_path, allow_pickle=True, **result)
 
     @staticmethod
     def load_config(config_path):
