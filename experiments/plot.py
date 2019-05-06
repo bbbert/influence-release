@@ -33,6 +33,9 @@ def plot_influence_correlation(ax,
                                actl,
                                pred,
                                label=None,
+                               alpha=0.5,
+                               size=10,
+                               colors=None,
                                title="Predicted against actual influence",
                                subtitle="None",
                                xlabel="Actual influence",
@@ -54,23 +57,22 @@ def plot_influence_correlation(ax,
     ax.plot([minW, maxW], [minW, maxW], color='grey', alpha=0.3)
 
     # Color groups of points if tagged
-    colors = None
-    if label is not None:
+    if colors is None and label is not None:
         colors, label_to_color = generate_color_cycle(label)
+        legend_elements = [ Line2D([0], [0], linewidth=0, marker='o',
+                                   color=label_color, label=label, markersize=5)
+                            for label, label_color in label_to_color.items() ]
+        ax.legend(handles=legend_elements,
+                  loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
     # Plot points
-    ax.scatter(actl, pred, color=colors, alpha=0.5, s=10)
+    if size is None:
+        size = 10
+    ax.scatter(actl, pred, color=colors, alpha=alpha, s=size)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_xlim([minW, maxW])
     ax.set_ylim([minW, maxW])
-
-    legend_elements = [ Line2D([0], [0], linewidth=0, marker='o',
-                               color=label_color, label=label, markersize=5)
-                        for label, label_color in label_to_color.items() ]
-    ax.legend(handles=legend_elements,
-              loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
-
 
     if subtitle is not None:
         title = title + "\n" + subtitle
