@@ -10,12 +10,14 @@ import numpy as np
 import seaborn as sns
 sns.set()
 
-def plot_z_norms(ax, z_norms, dataset_id,
-                 title="Distribution of Z-norms",
-                 subtitle=None):
-    ax.hist(z_norms, bins=50)
-    ax.set_xlabel('Z-norm')
-    ax.set_ylabel('Frequency')
+def plot_distribution(ax, value,
+                      title="Distribution",
+                      subtitle=None,
+                      xlabel='Value',
+                      ylabel='Frequency'):
+    sns.distplot(value, ax=ax)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
 
     if subtitle is not None:
         title = title + "\n" + subtitle

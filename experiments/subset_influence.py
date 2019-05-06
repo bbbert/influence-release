@@ -18,6 +18,7 @@ import math
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import scipy.linalg
 
 from sklearn.cluster import KMeans
 
@@ -541,7 +542,9 @@ class SubsetInfluenceLogreg(Experiment):
         # -g(|w|, theta_0)^T H(s+w, theta_0)^{-1} g(w, theta_0)
         # where w is the difference in weights. Since we already have the full
         # hessian H_reg(s), we can compute H(w) (with no regularization) and
-        # use it to update H_reg(s+w) = H_reg(s) + H(w) instead.
+        # use it to update H_reg(s+w) = H_reg(s) + H(w) instead. Sometimes,
+        # this leads to non positive-definite matrices due to floating-point
+        # error, so we add epsilon * I.
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
         n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
@@ -555,20 +558,26 @@ class SubsetInfluenceLogreg(Experiment):
         subset_newton_dparam = []
         self_newton_infls = []
         self_newton_margin_infls = []
+        subset_hessian_spectrum = []
         for i, remove_indices in enumerate(subset_indices):
             if (i % n_report == 0):
                 print('Computing Newton self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0).reshape(-1, 1)
             if self.config['inverse_hvp_method'] == 'explicit':
-                hessian_sw = hessian - model.get_hessian(self.train.subset(remove_indices),
-                                                         np.ones(len(remove_indices)), l2_reg=0, verbose=False)
+                hessian_w = model.get_hessian(self.train.subset(remove_indices),
+                                              -np.ones(len(remove_indices)), l2_reg=0, verbose=False)
+                hessian_sw = hessian + hessian_w
                 try:
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-9
+                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-8
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+
+                H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
+                hessian_spectrum = scipy.linalg.eigh(H_inv_H_w, eigvals_only=True)
+                subset_hessian_spectrum.append(hessian_spectrum)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[remove_indices] = 0
@@ -602,6 +611,8 @@ class SubsetInfluenceLogreg(Experiment):
         res['subset_self_newton_infl'] = np.array(self_newton_infls)
         if self.num_classes == 2:
             res['subset_self_newton_margin_infl'] = np.array(self_newton_margin_infls)
+        if self.config['inverse_hvp_method'] == 'explicit':
+            res['subset_hessian_spectrum'] = np.array(subset_hessian_spectrum)
 
         return res
 
@@ -640,7 +651,7 @@ class SubsetInfluenceLogreg(Experiment):
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-9
+                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-8
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
@@ -767,8 +778,10 @@ class SubsetInfluenceLogreg(Experiment):
         if 'z_norms' not in self.R: return
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
-        plot_z_norms(ax[0][0], self.R['z_norms'], self.dataset_id)
-        fig.savefig(os.path.join(self.plot_dir, 'z_norms.png'),
+        plot_distribution(ax[0][0], self.R['z_norms'],
+                          title='Z-norms', xlabel='Z-norm',
+                          subtitle=self.get_subtitle())
+        fig.savefig(os.path.join(self.plot_dir, 'z-norms.png'),
                     bbox_inches='tight')
 
     def get_simple_subset_tags(self):
@@ -788,19 +801,19 @@ class SubsetInfluenceLogreg(Experiment):
                 self.config['subset_max_rel_size'])
         return subtitle
 
-    def plot_subset_correlation(self,
-                                influence_type, # 'self' or 'fixed-test-{:test_idx}'
-                                quantity, # 'loss' or 'margin'
-                                x, y,
-                                x_approx_type, y_approx_type): # 'actl', 'pred', 'newton'
+    def plot_group_influence(self,
+                             influence_type, # 'self' or 'fixed-test-{:test_idx}'
+                             quantity, # 'loss' or 'margin'
+                             x, y,
+                             x_approx_type, y_approx_type): # 'actl', 'pred', 'newton'
         subset_tags = self.get_simple_subset_tags()
 
-        if influence_type.begins_with('self'):
+        if influence_type.find('self') == 0:
             title = 'Group self-influence on '
-        elif influence_type.begins_with('fixed-test-'):
+        elif influence_type.find('fixed-test-') == 0:
             test_idx = influence_type.rsplit('-',  1)[-1]
             title = "Group influence on test pt {}'s ".format(test_idx)
-        title += margin
+        title += quantity
 
         filename = '{}_{}_{}-{}.png'.format(
             influence_type, quantity, x_approx_type, y_approx_type)
@@ -824,13 +837,13 @@ class SubsetInfluenceLogreg(Experiment):
         if 'subset_self_actl_infl' not in self.R: return
         if 'subset_self_pred_infl' not in self.R: return
 
-        self.plot_subset_correlation('self', 'loss',
+        self.plot_group_influence('self', 'loss',
                                      self.R['subset_self_actl_infl'],
                                      self.R['subset_self_pred_infl'],
                                      'actl', 'pred')
 
         if self.num_classes == 2:
-            self.plot_subset_correlation('self', 'margin',
+            self.plot_group_influence('self', 'margin',
                                          self.R['subset_self_actl_margin_infl'],
                                          self.R['subset_self_pred_margin_infl'],
                                          'actl', 'pred')
@@ -842,13 +855,13 @@ class SubsetInfluenceLogreg(Experiment):
         subset_tags = self.get_simple_subset_tags()
 
         for i, test_idx in enumerate(self.R['fixed_test']):
-            self.plot_subset_correlation('fixed-test-{}'.format(test_idx), 'loss',
+            self.plot_group_influence('fixed-test-{}'.format(test_idx), 'loss',
                                          self.R['subset_fixed_test_actl_infl'][:, i],
                                          self.R['subset_fixed_test_pred_infl'][:, i],
                                          'actl', 'pred')
 
             if self.num_classes == 2:
-                self.plot_subset_correlation('fixed-test-{}'.format(test_idx), 'margin',
+                self.plot_group_influence('fixed-test-{}'.format(test_idx), 'margin',
                                              self.R['subset_fixed_test_actl_margin_infl'][:, i],
                                              self.R['subset_fixed_test_pred_margin_infl'][:, i],
                                              'actl', 'pred')
@@ -860,8 +873,8 @@ class SubsetInfluenceLogreg(Experiment):
         subset_tags = self.get_simple_subset_tags()
 
         def compare_newton(influence_type, quantity, actl, pred, newton):
-            self.plot_subset_correlation(influence_type, quantity, actl, newton, 'actl', 'newton')
-            self.plot_subset_correlation(influence_type, quantity, pred, newton, 'pred', 'newton')
+            self.plot_group_influence(influence_type, quantity, actl, newton, 'actl', 'newton')
+            self.plot_group_influence(influence_type, quantity, pred, newton, 'pred', 'newton')
 
         compare_newton('self', 'loss',
                        self.R['subset_self_actl_infl'],
@@ -911,6 +924,40 @@ class SubsetInfluenceLogreg(Experiment):
             fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-influence-{}_loss.png'.format(test_idx)),
                         bbox_inches='tight')
 
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_against_subset_size(ax[0][0],
+                                 self.R['subset_tags'],
+                                 self.R['subset_indices'],
+                                 self.R['subset_train_accuracy'],
+                                 title='Train accuracy by subset size',
+                                 ylabel='Train accuracy',
+                                 subtitle=self.get_subtitle())
+        fig.savefig(os.path.join(self.plot_dir, 'sizes_train-accuracy.png'),
+                    bbox_inches='tight')
+
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_against_subset_size(ax[0][0],
+                                 self.R['subset_tags'],
+                                 self.R['subset_indices'],
+                                 self.R['subset_test_accuracy'],
+                                 title='Test accuracy by subset size',
+                                 ylabel='Test accuracy',
+                                 subtitle=self.get_subtitle())
+        fig.savefig(os.path.join(self.plot_dir, 'sizes_test-accuracy.png'),
+                    bbox_inches='tight')
+
+    def plot_subset_hessian(self):
+        if 'subset_hessian_spectrum' not in self.R: return
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        plot_distribution(ax[0][0],
+                          self.R['subset_hessian_spectrum'][:, -1],
+                          title="Maximum eigenvalue of $H_{\lambda}(s)^{-1} H(w)$",
+                          subtitle=self.get_subtitle(),
+                          xlabel='Eigenvalue')
+        fig.savefig(os.path.join(self.plot_dir, 'subset-hessian-max-eig.png'),
+                    bbox_inches='tight')
 
     def plot_all(self):
         self.plot_self_influence()
@@ -918,3 +965,4 @@ class SubsetInfluenceLogreg(Experiment):
         self.plot_newton_influence()
         self.plot_z_norms()
         self.plot_subset_sizes()
+        self.plot_subset_hessian()
