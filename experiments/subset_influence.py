@@ -369,7 +369,7 @@ class SubsetInfluenceLogreg(Experiment):
             tagged_subsets += [('random', s) for s in random_subsets]
 
         with benchmark("Same class subsets"):
-            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels)
+            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels, subset_sizes=subset_sizes)
             same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
             tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
