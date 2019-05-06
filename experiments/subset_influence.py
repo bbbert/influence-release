@@ -567,7 +567,12 @@ class SubsetInfluenceLogreg(Experiment):
             if self.config['inverse_hvp_method'] == 'explicit':
                 hessian_sw = hessian - model.get_hessian(self.train.subset(remove_indices),
                                                          np.ones(len(remove_indices)), l2_reg=0, verbose=False)
-                H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                try:
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                except:
+                    # floating-point error accumulation can cause the updated matrix to not be positive definite
+                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-9
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[remove_indices] = 0
@@ -635,7 +640,12 @@ class SubsetInfluenceLogreg(Experiment):
             if self.config['inverse_hvp_method'] == 'explicit':
                 hessian_sw = hessian - model.get_hessian(self.train.subset([i]),
                                                          np.ones(1), l2_reg=0, verbose=False)
-                H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                try:
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                except:
+                    # floating-point error accumulation can cause the updated matrix to not be positive definite
+                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-9
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[i] = 0
@@ -688,11 +698,16 @@ class SubsetInfluenceLogreg(Experiment):
 
         # Calculate actual changes in parameters
         subset_dparam = []
+        subset_train_acc, subset_test_acc = [], []
         for i, remove_indices in enumerate(subset_indices):
             model.load('subset_{}'.format(i))
             param = model.get_params_flat()
             subset_dparam.append(param - initial_param)
+            subset_train_acc.append(model.get_accuracy(self.train))
+            subset_test_acc.append(model.get_accuracy(self.test))
         res['subset_dparam'] = np.array(subset_dparam)
+        res['subset_train_accuracy'] = np.array(subset_train_acc)
+        res['subset_test_accuracy'] = np.array(subset_test_acc)
 
         return res
 
