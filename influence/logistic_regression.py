@@ -124,10 +124,11 @@ class LogisticRegression(Model):
         with tf.variable_scope('softmax_linear'):
             weights = variable_with_l2_reg(
                 name='weights',
-                shape=(self.input_dim * self.pseudo_num_classes,),
+                shape=(self.pseudo_num_classes * self.input_dim,),
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
                 l2_reg=self.l2_reg)
             self.weights = weights
+            weights_reshape = tf.transpose(tf.reshape(weights, (self.pseudo_num_classes, self.input_dim)))
             params.append(weights)
 
             if self.fit_intercept:
@@ -139,9 +140,9 @@ class LogisticRegression(Model):
                 self.biases = biases
                 params.append(biases)
 
-                logits = tf.matmul(input, tf.reshape(weights, (self.input_dim, self.pseudo_num_classes))) + biases
+                logits = tf.matmul(input, weights_reshape) + biases
             else:
-                logits = tf.matmul(input, tf.reshape(weights, (self.input_dim, self.pseudo_num_classes)))
+                logits = tf.matmul(input, weights_reshape)
 
         if self.num_classes == 2:
             zeros = tf.zeros_like(logits)

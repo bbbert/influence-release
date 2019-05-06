@@ -255,43 +255,44 @@ class SubsetInfluenceLogreg(Experiment):
             pos_subsets.append(rng.choice(scalar_infl_indices[-window:], subset_size, replace=False))
         return np.array(neg_subsets), np.array(pos_subsets)
 
-    def get_same_grad_dir(self, rng, train_grad_loss):
+    def get_same_grad_dir(self, rng, train_grad_loss, subset_sizes=None):
         # Using Pigeonhole to guarantee we get a sufficiently large cluster
-        n_clusters = int(math.floor(1 / self.config['subset_rel_size']))
+        if self.subset_choice_type == "range":
+            max_rel_size = self.config['subset_max_rel_size']
+        else:
+            max_rel_size = self.config['subset_rel_size']
+        n_clusters = int(math.floor(1 / max_rel_size))
+
         km = KMeans(n_clusters=n_clusters)
         km.fit(train_grad_loss)
-        labels, centroids = km.labels_, km.cluster_centers_
-        _, counts = np.unique(labels, return_counts=True)
+        cluster_labels, centroids = km.labels_, km.cluster_centers_
+        _, counts = np.unique(cluster_labels, return_counts=True)
 
-        best = max([(count, i) for i, count in enumerate(counts) if count >= self.subset_size])[1]
-        cluster_indices = np.where(labels == best)[0]
+        cluster_indices = [ np.nonzero(cluster_labels == i)[0] for i in range(len(centroids)) ]
         subsets = []
         for i in range(self.num_subsets):
-            subsets.append(rng.choice(cluster_indices, self.subset_size, replace=False))
-        return np.array(subsets), best, labels
+            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+            valid_clusters = [ i for i, count in enumerate(counts) if count >= subset_size ]
+            if len(valid_clusters) == 0: continue
 
-    def get_same_class_subsets(self, rng, labels, test_label=None):
-        label_vals, counts = np.unique(labels, return_counts=True)
-        valid_labels = []
-        valid_indices = []
-        for i in range(len(label_vals)):
-            if counts[i] >= self.subset_size:
-                valid_labels.append(label_vals[i])
-                valid_indices.append(list(np.where(labels == label_vals[i])[0]))
-        assert len(valid_indices) > 0
-        flat = [i for sublist in valid_indices for i in sublist]
-        label_to_ind = dict(zip(valid_labels, range(len(valid_indices))))
+            cluster_idx = rng.choice(valid_clusters)
+            subset = rng.choice(cluster_indices[cluster_idx], subset_size, replace=False)
+            subsets.append(subset)
+        return np.array(subsets)
+
+    def get_same_class_subsets(self, rng, labels, subset_sizes=None):
+        label_vals, label_counts = np.unique(labels, return_counts=True)
+        label_indices = [ np.nonzero(labels == label_val)[0] for label_val in label_vals ]
 
         subsets = []
-        if test_label is not None and int(test_label) not in valid_labels:
-            print('Couldn\'t use desired label.')
         for i in range(self.num_subsets):
-            if (test_label is None) or (int(test_label) not in valid_labels):
-                sample = rng.choice(flat)
-                sample_ind = label_to_ind[labels[sample]]
-            else:
-                sample_ind = label_to_ind[int(test_label)]
-            subsets.append(rng.choice(valid_indices[sample_ind], self.subset_size, replace=False))
+            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+            valid_label_indices = np.nonzero(label_counts >= subset_size)[0]
+
+            if len(valid_label_indices) == 0: continue
+            valid_label_idx = rng.choice(valid_label_indices)
+            subset = rng.choice(label_indices[valid_label_idx], subset_size, replace=False)
+            subsets.append(subset)
         return np.array(subsets)
 
     def get_same_features_subsets(self, rng, features, labels):
@@ -336,7 +337,7 @@ class SubsetInfluenceLogreg(Experiment):
             tagged_subsets += [('random', s) for s in random_subsets]
 
         with benchmark("Same class subsets"):
-            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels, test_label=None)
+            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels)
             same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
             tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
@@ -352,7 +353,7 @@ class SubsetInfluenceLogreg(Experiment):
             tagged_subsets += [('same_features', s) for s in same_features_subsets]
 
         with benchmark("Same gradient subsets"):
-            same_grad_subsets, cluster_label, cluster_labels = self.get_same_grad_dir(rng, self.R['train_grad_loss'])
+            same_grad_subsets = self.get_same_grad_dir(rng, self.R['train_grad_loss'])
             tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
 
         return tagged_subsets
@@ -366,6 +367,11 @@ class SubsetInfluenceLogreg(Experiment):
         with benchmark("Random subsets"):
             random_subsets = self.get_random_subsets(rng, subset_sizes=subset_sizes)
             tagged_subsets += [('random', s) for s in random_subsets]
+
+        with benchmark("Same class subsets"):
+            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels)
+            same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
+            tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
         with benchmark("Scalar infl tail growing window subsets"):
             for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
@@ -756,8 +762,7 @@ class SubsetInfluenceLogreg(Experiment):
 
     def get_simple_subset_tags(self):
         def simplify_tag(tag):
-            if 'pos_tail_test' in tag: return 'pos_tail_test'
-            elif 'neg_tail_test' in tag: return 'neg_tail_test'
+            if '-' in tag: return tag.split('-')[0]
             return tag
         return map(simplify_tag, self.R['subset_tags'])
 
