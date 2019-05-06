@@ -572,7 +572,7 @@ class SubsetInfluenceLogreg(Experiment):
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-8
+                    hessian_sw += np.eye(hessian_sw.shape[0]) * 1e-8
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
 
                 H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
@@ -651,7 +651,7 @@ class SubsetInfluenceLogreg(Experiment):
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.ones(hessian_sw.shape[0]) * 1e-8
+                    hessian_sw += np.eye(hessian_sw.shape[0]) * 1e-8
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
