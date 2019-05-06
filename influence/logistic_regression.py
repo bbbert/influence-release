@@ -353,7 +353,7 @@ class LogisticRegression(Model):
 
     def copy_params_to_sklearn_model(self, sklearn_model):
         params = self.get_params()
-        W = params[0].reshape((self.input_dim, self.pseudo_num_classes))
+        W = params[0].reshape((self.pseudo_num_classes, self.input_dim))
         sklearn_model.coef_ = W
 
         if self.fit_intercept:
