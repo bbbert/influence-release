@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 import argparse
 
 import matplotlib as mpl
+import os
 mpl.use('Agg')
 from experiments.subset_influence import SubsetInfluenceLogreg
 
@@ -22,4 +23,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     E = SubsetInfluenceLogreg.load_run(args.run_id, out_dir=args.out_dir)
+
+    # Delete all previous plots
+    for image_path in os.listdir(E.plot_dir):
+        base, ext = os.path.splitext(image_path)
+        if ext == ".png":
+            os.remove(os.path.join(E.plot_dir, image_path))
+
     E.plot_all()
