@@ -244,13 +244,15 @@ class SubsetInfluenceLogreg(Experiment):
             subsets.append(rng.choice(self.num_train, subset_size, replace=False))
         return np.array(subsets)
 
-    def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes=None, fixed_window=None):
+    def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes=None):
+        max_subset_size = self.subset_size if subset_sizes is None else np.max(subset_sizes)
+        window = 2 * max_subset_size
+        assert window <= self.num_train
+
         scalar_infl_indices = np.argsort(pred_infl).reshape(-1)
         pos_subsets, neg_subsets = [], []
         for i in range(self.num_subsets):
             subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
-            window = fixed_window if fixed_window is not None else 2 * subset_size
-            assert window < self.num_train
             neg_subsets.append(rng.choice(scalar_infl_indices[:window], subset_size, replace=False))
             pos_subsets.append(rng.choice(scalar_infl_indices[-window:], subset_size, replace=False))
         return np.array(neg_subsets), np.array(pos_subsets)
@@ -373,23 +375,17 @@ class SubsetInfluenceLogreg(Experiment):
             same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
             tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
-        with benchmark("Scalar infl tail growing window subsets"):
+        with benchmark("Same gradient subsets"):
+            same_grad_subsets = self.get_same_grad_dir(rng, self.R['train_grad_loss'], subset_sizes=subset_sizes)
+            tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
+
+        with benchmark("Scalar infl tail subsets"):
             for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
                 neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl,
                                                                                 subset_sizes=subset_sizes)
-                tagged_subsets += [('neg_tail_test_grow-{}'.format(test_idx), s) for s in neg_tail_subsets]
-                tagged_subsets += [('pos_tail_test_grow-{}'.format(test_idx), s) for s in pos_tail_subsets]
-                print('Found scalar infl tail (growing window) subsets for test idx {}.'.format(test_idx))
-
-        with benchmark("Scalar infl tail fixed window subsets"):
-            fixed_window = 2 * self.subset_max_size
-            for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
-                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl,
-                                                                                subset_sizes=subset_sizes,
-                                                                                fixed_window=fixed_window)
-                tagged_subsets += [('neg_tail_test_fixed-{}'.format(test_idx), s) for s in neg_tail_subsets]
-                tagged_subsets += [('pos_tail_test_fixed-{}'.format(test_idx), s) for s in pos_tail_subsets]
-                print('Found scalar infl tail (fixed window) subsets for test idx {}.'.format(test_idx))
+                tagged_subsets += [('neg_tail_test-{}'.format(test_idx), s) for s in neg_tail_subsets]
+                tagged_subsets += [('pos_tail_test-{}'.format(test_idx), s) for s in pos_tail_subsets]
+                print('Found scalar infl tail subsets for test idx {}.'.format(test_idx))
 
         return tagged_subsets
 

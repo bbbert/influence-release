@@ -128,9 +128,9 @@ class LogisticRegression(Model):
                 stddev=1.0 / math.sqrt(float(self.input_dim)),
                 l2_reg=self.l2_reg)
             self.weights = weights
-            weights_reshape = tf.transpose(tf.reshape(weights, (self.pseudo_num_classes, self.input_dim)))
             params.append(weights)
 
+            W = tf.reshape(weights, (self.pseudo_num_classes, self.input_dim))
             if self.fit_intercept:
                 biases = variable_with_l2_reg(
                     'biases',
@@ -140,9 +140,9 @@ class LogisticRegression(Model):
                 self.biases = biases
                 params.append(biases)
 
-                logits = tf.matmul(input, weights_reshape) + biases
+                logits = tf.matmul(input, W.T) + biases
             else:
-                logits = tf.matmul(input, weights_reshape)
+                logits = tf.matmul(input, W.T)
 
         if self.num_classes == 2:
             zeros = tf.zeros_like(logits)
@@ -353,7 +353,7 @@ class LogisticRegression(Model):
 
     def copy_params_to_sklearn_model(self, sklearn_model):
         params = self.get_params()
-        W = params[0].reshape((self.input_dim, self.pseudo_num_classes)).T
+        W = params[0].reshape((self.input_dim, self.pseudo_num_classes))
         sklearn_model.coef_ = W
 
         if self.fit_intercept:
@@ -361,7 +361,7 @@ class LogisticRegression(Model):
             sklearn_model.intercept_ = b
 
     def copy_sklearn_model_to_params(self, sklearn_model):
-        W = sklearn_model.coef_.T.reshape(-1)
+        W = sklearn_model.coef_.reshape(-1)
         params = [W]
 
         if self.fit_intercept:
