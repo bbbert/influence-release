@@ -130,7 +130,7 @@ class LogisticRegression(Model):
             self.weights = weights
             params.append(weights)
 
-            W = tf.reshape(weights, (self.pseudo_num_classes, self.input_dim))
+            weights_transpose = tf.transpose(tf.reshape(weights, (self.pseudo_num_classes, self.input_dim)))
             if self.fit_intercept:
                 biases = variable_with_l2_reg(
                     'biases',
@@ -140,9 +140,9 @@ class LogisticRegression(Model):
                 self.biases = biases
                 params.append(biases)
 
-                logits = tf.matmul(input, W.T) + biases
+                logits = tf.matmul(input, weights_transpose) + biases
             else:
-                logits = tf.matmul(input, W.T)
+                logits = tf.matmul(input, weights_transpose)
 
         if self.num_classes == 2:
             zeros = tf.zeros_like(logits)
