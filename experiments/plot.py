@@ -34,7 +34,7 @@ def plot_influence_correlation(ax,
                                pred,
                                label=None,
                                alpha=0.5,
-                               size=10,
+                               size=5,
                                colors=None,
                                title="Predicted against actual influence",
                                subtitle="None",
@@ -65,9 +65,16 @@ def plot_influence_correlation(ax,
         ax.legend(handles=legend_elements,
                   loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
+    # Randomize plot order for colors to show up better
+    rng = np.random.RandomState(0)
+    order = np.arange(len(actl))
+    rng.shuffle(order)
+    actl = actl[order]
+    pred = pred[order]
+    if colors is not None:
+        colors = np.array(colors)[order]
+    
     # Plot points
-    if size is None:
-        size = 10
     ax.scatter(actl, pred, color=colors, alpha=alpha, s=size)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
