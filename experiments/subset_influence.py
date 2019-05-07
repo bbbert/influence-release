@@ -576,7 +576,7 @@ class SubsetInfluenceLogreg(Experiment):
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
 
                 H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
-                hessian_spectrum = scipy.linalg.eigh(H_inv_H_w, eigvals_only=True)
+                hessian_spectrum = scipy.linalg.eigvals(H_inv_H_w)
                 subset_hessian_spectrum.append(hessian_spectrum)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
