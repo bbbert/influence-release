@@ -542,9 +542,7 @@ class SubsetInfluenceLogreg(Experiment):
         # -g(|w|, theta_0)^T H(s+w, theta_0)^{-1} g(w, theta_0)
         # where w is the difference in weights. Since we already have the full
         # hessian H_reg(s), we can compute H(w) (with no regularization) and
-        # use it to update H_reg(s+w) = H_reg(s) + H(w) instead. Sometimes,
-        # this leads to non positive-definite matrices due to floating-point
-        # error, so we add epsilon * I.
+        # use it to update H_reg(s+w) = H_reg(s) + H(w) instead.
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
         n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
@@ -571,9 +569,11 @@ class SubsetInfluenceLogreg(Experiment):
                 try:
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
-                    # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.eye(hessian_sw.shape[0]) * 1e-8
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                    # floating-point error accumulation can cause the updated matrix to not be
+                    # badly conditioned for cholesky decomposition, so we revert to LU
+                    # factorization on the CPU in those cases.
+                    H_inv_grad_loss = scipy.linalg.lu_solve(
+                        scipy.linalg.lu_factor(hessian_sw), grad_loss).reshape(-1)
 
                 H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
                 hessian_spectrum = scipy.linalg.eigvals(H_inv_H_w)
@@ -650,9 +650,11 @@ class SubsetInfluenceLogreg(Experiment):
                 try:
                     H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
                 except:
-                    # floating-point error accumulation can cause the updated matrix to not be positive definite
-                    hessian_sw += np.eye(hessian_sw.shape[0]) * 1e-8
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
+                    # floating-point error accumulation can cause the updated matrix to not be
+                    # badly conditioned for cholesky decomposition, so we revert to LU
+                    # factorization on the CPU in those cases.
+                    H_inv_grad_loss = scipy.linalg.lu_solve(
+                        scipy.linalg.lu_factor(hessian_sw), grad_loss).reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[i] = 0
@@ -838,6 +840,7 @@ class SubsetInfluenceLogreg(Experiment):
                                    ylabel=ylabel,
                                    colors=colors)
         fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
+        plt.close(fig)
 
     def plot_self_influence(self):
         if 'subset_self_actl_infl' not in self.R: return
@@ -916,8 +919,9 @@ class SubsetInfluenceLogreg(Experiment):
                                  title='Group self-influence',
                                  ylabel='Self-influence',
                                  subtitle=self.get_subtitle())
-        fig.savefig(os.path.join(self.plot_dir, 'sizes_self-influence_loss.png'),
+        fig.savefig(os.path.join(self.plot_dir, 'sizes_self_loss.png'),
                     bbox_inches='tight')
+        plt.close(fig)
 
         for i, test_idx in enumerate(self.R['fixed_test']):
             fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -927,8 +931,9 @@ class SubsetInfluenceLogreg(Experiment):
                                      self.R['subset_fixed_test_pred_infl'][:, i],
                                      title='Group influence on test pt {}'.format(test_idx),
                                      subtitle=self.get_subtitle())
-            fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-influence-{}_loss.png'.format(test_idx)),
+            fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-{}_loss.png'.format(test_idx)),
                         bbox_inches='tight')
+            plt.close(fig)
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         plot_against_subset_size(ax[0][0],
@@ -940,6 +945,7 @@ class SubsetInfluenceLogreg(Experiment):
                                  subtitle=self.get_subtitle())
         fig.savefig(os.path.join(self.plot_dir, 'sizes_train-accuracy.png'),
                     bbox_inches='tight')
+        plt.close(fig)
 
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -952,18 +958,21 @@ class SubsetInfluenceLogreg(Experiment):
                                  subtitle=self.get_subtitle())
         fig.savefig(os.path.join(self.plot_dir, 'sizes_test-accuracy.png'),
                     bbox_inches='tight')
+        plt.close(fig)
 
     def plot_subset_hessian(self):
         if 'subset_hessian_spectrum' not in self.R: return
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        max_eigenvalue = np.max(np.abs(self.R['subset_hessian_spectrum']), axis=1)
         plot_distribution(ax[0][0],
-                          self.R['subset_hessian_spectrum'][:, -1],
+                          max_eigenvalue,
                           title="Maximum eigenvalue of $H_{\lambda}(s)^{-1} H(w)$",
                           subtitle=self.get_subtitle(),
                           xlabel='Eigenvalue')
         fig.savefig(os.path.join(self.plot_dir, 'subset-hessian-max-eig.png'),
                     bbox_inches='tight')
+        plt.close(fig)
 
     def plot_all(self):
         self.plot_self_influence()
