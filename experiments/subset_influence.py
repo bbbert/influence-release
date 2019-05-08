@@ -571,13 +571,14 @@ class SubsetInfluenceLogreg(Experiment):
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be
                     # badly conditioned for cholesky decomposition, so we revert to LU
-                    # factorization on the CPU in those cases.
-                    H_inv_grad_loss = scipy.linalg.lu_solve(
-                        scipy.linalg.lu_factor(hessian_sw), grad_loss).reshape(-1)
+                    # factorization in those cases.
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
+                                                           inverse_vp_method="lu").reshape(-1)
 
-                H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
-                hessian_spectrum = scipy.linalg.eigvals(H_inv_H_w)
-                subset_hessian_spectrum.append(hessian_spectrum)
+                if not self.config['skip_hessian_spectrum']:
+                    H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
+                    hessian_spectrum = scipy.linalg.eigvals(H_inv_H_w)
+                    subset_hessian_spectrum.append(hessian_spectrum)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[remove_indices] = 0
@@ -611,7 +612,7 @@ class SubsetInfluenceLogreg(Experiment):
         res['subset_self_newton_infl'] = np.array(self_newton_infls)
         if self.num_classes == 2:
             res['subset_self_newton_margin_infl'] = np.array(self_newton_margin_infls)
-        if self.config['inverse_hvp_method'] == 'explicit':
+        if self.config['inverse_hvp_method'] == 'explicit' and not self.config['skip_hessian_spectrum']:
             res['subset_hessian_spectrum'] = np.array(subset_hessian_spectrum)
 
         return res
@@ -652,9 +653,9 @@ class SubsetInfluenceLogreg(Experiment):
                 except:
                     # floating-point error accumulation can cause the updated matrix to not be
                     # badly conditioned for cholesky decomposition, so we revert to LU
-                    # factorization on the CPU in those cases.
-                    H_inv_grad_loss = scipy.linalg.lu_solve(
-                        scipy.linalg.lu_factor(hessian_sw), grad_loss).reshape(-1)
+                    # factorization in those cases.
+                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
+                                                           inverse_vp_method="lu").reshape(-1)
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[i] = 0

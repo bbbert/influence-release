@@ -7,6 +7,7 @@ import os
 import math
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 import sklearn
 import sklearn.linear_model
 
@@ -110,9 +111,10 @@ class LogisticRegression(Model):
             tf.float32,
             shape=(None, self.params_flat.shape[0]),
             name='vectors_placeholder')
-        self.inverse_vp = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
-                                            tf.transpose(self.vectors_placeholder))
-        self.inverse_quad = tf.einsum('ai,ia->a', self.vectors_placeholder, self.inverse_vp)
+        self.inverse_vp_cho = tf.cholesky_solve(tf.cholesky(self.matrix_placeholder),
+                                                tf.transpose(self.vectors_placeholder))
+        self.inverse_vp_lu = tfp.math.lu_solve(*tf.linalg.lu(self.matrix_placeholder),
+                                               rhs=tf.transpose(self.vectors_placeholder))
 
         self.vectors_placeholder_split = split_like(self.params, self.vectors_placeholder)
         self.hessian_vp_reg = flatten(hessian_vector_product(self.total_loss_reg,
@@ -618,10 +620,19 @@ class LogisticRegression(Model):
             raise ValueError('Unknown inverse HVP method {}'.format(method))
 
     def get_inverse_vp(self, matrix, vectors, **kwargs):
-        inverse_vp = self.sess.run(self.inverse_vp, feed_dict={
-            self.matrix_placeholder: matrix,
-            self.vectors_placeholder: vectors.T,
-        })
+        method = kwargs.get('inverse_vp_method', 'cholesky')
+        if method == "cholesky":
+            inverse_vp = self.sess.run(self.inverse_vp_cho, feed_dict={
+                self.matrix_placeholder: matrix,
+                self.vectors_placeholder: vectors.T,
+            })
+        elif method == "lu":
+            inverse_vp = self.sess.run(self.inverse_vp_lu, feed_dict={
+                self.matrix_placeholder: matrix,
+                self.vectors_placeholder: vectors.T,
+            })
+        else:
+            raise ValueError("Unknown inverse VP method {}".format(method))
         return inverse_vp
 
     # Margins (only for binary classification)

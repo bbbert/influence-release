@@ -31,6 +31,9 @@ if __name__ == "__main__":
                         help="The seed to use for subset selection")
     parser.add_argument('--subset-choice-type', default="types", type=str,
                         help="The types of subsets to evaluate.")
+    parser.add_argument('--skip-hessian-spectrum', dest='skip_hessian_spectrum', action='store_true',
+                        help="Whether to skip the computation of the hessian spectrum")
+    parser.set_defaults(skip_hessian_spectrum=False)
 
     # For subset-choice-type = "types"
     parser.add_argument('--subset-rel-size', default=0.1, type=float,
@@ -80,6 +83,7 @@ if __name__ == "__main__":
             'cifar10': 'cg',
         }[args.dataset_id],
         'max_memory': int(args.max_memory),
+        'skip_hessian_spectrum': args.skip_hessian_spectrum,
     }
 
     if args.inverse_hvp_method is not None:
