@@ -84,7 +84,7 @@ if __name__ == "__main__":
             'cifar10_small': 'cg',
             'cifar10': 'cg',
             'dogfish': 'explicit',
-            'animals': 'explicit',
+            'animals': 'cg',
         }[args.dataset_id],
         'inverse_vp_method': 'lu' if args.dataset_id == 'mnist_small' else 'cholesky',
         'max_memory': int(args.max_memory),
