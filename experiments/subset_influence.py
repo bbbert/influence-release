@@ -565,15 +565,8 @@ class SubsetInfluenceLogreg(Experiment):
             if self.config['inverse_hvp_method'] == 'explicit':
                 hessian_w = model.get_hessian(self.train.subset(remove_indices),
                                               -np.ones(len(remove_indices)), l2_reg=0, verbose=False)
-                hessian_sw = hessian + hessian_w
-                try:
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
-                except:
-                    # floating-point error accumulation can cause the updated matrix to not be
-                    # badly conditioned for cholesky decomposition, so we revert to LU
-                    # factorization in those cases.
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
-                                                           inverse_vp_method="lu").reshape(-1)
+                H_inv_grad_loss = model.get_inverse_vp(hessian + hessian_w, grad_loss,
+                                                       inverse_vp_method=self.config['inverse_vp_method']).reshape(-1)
 
                 if not self.config['skip_hessian_spectrum']:
                     H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
@@ -648,14 +641,9 @@ class SubsetInfluenceLogreg(Experiment):
             if self.config['inverse_hvp_method'] == 'explicit':
                 hessian_sw = hessian - model.get_hessian(self.train.subset([i]),
                                                          np.ones(1), l2_reg=0, verbose=False)
-                try:
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss).reshape(-1)
-                except:
-                    # floating-point error accumulation can cause the updated matrix to not be
-                    # badly conditioned for cholesky decomposition, so we revert to LU
-                    # factorization in those cases.
-                    H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
-                                                           inverse_vp_method="lu").reshape(-1)
+                H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
+                                                       inverse_vp_method=self.config['inverse_vp_method']).reshape(-1)
+
             elif self.config['inverse_hvp_method'] == 'cg':
                 sample_weights = np.ones(self.num_train)
                 sample_weights[i] = 0
