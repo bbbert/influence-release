@@ -765,6 +765,40 @@ class SubsetInfluenceLogreg(Experiment):
 
         return res
 
+    @phase(14)
+    def compute_pparam_infl(self):
+        model = self.get_model()
+        res = dict()
+
+        model.load('initial')
+        initial_param = model.get_params_flat()
+
+        subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
+
+        fixed_test = self.R['fixed_test']
+        fixed_test_ds = self.test.subset(fixed_test)
+
+        initial_fixed_test_loss = self.R['initial_test_losses'][fixed_test]
+        initial_train_loss = self.R['initial_train_losses']
+
+        # Calculate change in loss at predicted parameters
+        subset_fixed_test_pparam_infl = []
+        subset_self_pparam_infl = []
+        for i, remove_indices in enumerate(subset_indices):
+            pred_param = initial_param + self.R['subset_pred_dparam'][i, :]
+            model.set_params_flat(pred_param)
+
+            pparam_fixed_test_loss = model.get_indiv_loss(fixed_test_ds, verbose=False)
+            pparam_self_loss = model.get_total_loss(self.train.subset(remove_indices), l2_reg=0)
+            initial_self_loss = np.sum(initial_train_loss[remove_indices])
+            subset_fixed_test_pparam_infl.append(pparam_fixed_test_loss - initial_fixed_test_loss)
+            subset_self_pparam_infl.append(pparam_self_loss - initial_self_loss)
+
+        res['subset_fixed_test_pparam_infl'] = np.array(subset_fixed_test_pparam_infl)
+        res['subset_self_pparam_infl'] = np.array(subset_self_pparam_infl)
+
+        return res
+
     def plot_z_norms(self):
         if 'z_norms' not in self.R: return
 
@@ -812,7 +846,8 @@ class SubsetInfluenceLogreg(Experiment):
 
         approx_type_to_label = { 'actl': 'Actual influence',
                                  'pred': 'First-order influence',
-                                 'newton': 'Newton influence' }
+                                 'newton': 'Newton influence',
+                                 'pparam': 'Predicted parameter influence' }
         xlabel = approx_type_to_label[x_approx_type]
         ylabel = approx_type_to_label[y_approx_type]
 
@@ -879,8 +914,6 @@ class SubsetInfluenceLogreg(Experiment):
         if 'subset_self_newton_infl' not in self.R: return
         if 'subset_fixed_test_newton_infl' not in self.R: return
 
-        subset_tags = self.get_simple_subset_tags()
-
         def compare_newton(influence_type, quantity, actl, pred, newton):
             self.plot_group_influence(influence_type, quantity, actl, newton, 'actl', 'newton')
             self.plot_group_influence(influence_type, quantity, pred, newton, 'pred', 'newton')
@@ -907,6 +940,21 @@ class SubsetInfluenceLogreg(Experiment):
                                self.R['subset_fixed_test_actl_margin_infl'][:, i],
                                self.R['subset_fixed_test_pred_margin_infl'][:, i],
                                self.R['subset_fixed_test_newton_margin_infl'][:, i])
+
+    def plot_pparam_influence(self):
+        if 'subset_self_pparam_infl' not in self.R: return
+        if 'subset_fixed_test_pparam_infl' not in self.R: return
+
+        self.plot_group_influence('self', 'loss',
+                                  self.R['subset_self_actl_infl'],
+                                  self.R['subset_self_pparam_infl'],
+                                  'actl', 'pparam')
+
+        for i, test_idx in enumerate(self.R['fixed_test']):
+            self.plot_group_influence('fixed-test-{}'.format(test_idx), 'loss',
+                                      self.R['subset_fixed_test_actl_infl'][:, i],
+                                      self.R['subset_fixed_test_pparam_infl'][:, i],
+                                      'actl', 'pparam')
 
     def plot_subset_sizes(self):
         if self.subset_choice_type != "range": return
@@ -981,6 +1029,7 @@ class SubsetInfluenceLogreg(Experiment):
         self.plot_self_influence()
         self.plot_fixed_test_influence()
         self.plot_newton_influence()
+        self.plot_pparam_influence()
         self.plot_z_norms()
         self.plot_subset_sizes()
         self.plot_subset_hessian()
