@@ -285,8 +285,11 @@ class LogisticRegression(Model):
         assert params_flat.shape == self.params_flat.shape
         index, params = 0, []
         for orig_param in self.params:
-            param = params_flat[index:index + tf.size(orig_param)].reshape(orig_param.shape)
-            index += tf.size(orig_param)
+            total_dim = 1
+            for dim in orig_param.shape:
+                total_dim *= int(dim)
+            param = params_flat[index:index + total_dim].reshape(orig_param.shape)
+            index += total_dim
             params.append(param)
         return params
 

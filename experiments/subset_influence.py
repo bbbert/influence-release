@@ -779,23 +779,32 @@ class SubsetInfluenceLogreg(Experiment):
         fixed_test_ds = self.test.subset(fixed_test)
 
         initial_fixed_test_loss = self.R['initial_test_losses'][fixed_test]
-        initial_train_loss = self.R['initial_train_losses']
+        if self.num_classes == 2:
+            initial_fixed_test_margin = self.R['initial_test_margins'][fixed_test]
 
-        # Calculate change in loss at predicted parameters
+        # Calculate change in loss/margin at predicted parameters
         subset_fixed_test_pparam_infl = []
         subset_self_pparam_infl = []
+        subset_fixed_test_pparam_margin_infl = []
         for i, remove_indices in enumerate(subset_indices):
+            subset_ds = self.train.subset(remove_indices)
             pred_param = initial_param + self.R['subset_pred_dparam'][i, :]
             model.set_params_flat(pred_param)
 
             pparam_fixed_test_loss = model.get_indiv_loss(fixed_test_ds, verbose=False)
-            pparam_self_loss = model.get_total_loss(self.train.subset(remove_indices), l2_reg=0)
-            initial_self_loss = np.sum(initial_train_loss[remove_indices])
+            pparam_self_loss = model.get_total_loss(subset_ds, l2_reg=0, verbose=False)
+            initial_self_loss = np.sum(self.R['initial_train_losses'][remove_indices])
             subset_fixed_test_pparam_infl.append(pparam_fixed_test_loss - initial_fixed_test_loss)
             subset_self_pparam_infl.append(pparam_self_loss - initial_self_loss)
 
+            if self.num_classes == 2:
+                pparam_fixed_test_margin = model.get_indiv_margin(fixed_test_ds, verbose=False)
+                subset_fixed_test_pparam_margin_infl.append(pparam_fixed_test_margin - initial_fixed_test_margin)
+
         res['subset_fixed_test_pparam_infl'] = np.array(subset_fixed_test_pparam_infl)
         res['subset_self_pparam_infl'] = np.array(subset_self_pparam_infl)
+        if self.num_classes == 2:
+            res['subset_fixed_test_pparam_margin_infl'] = np.array(subset_fixed_test_pparam_margin_infl)
 
         return res
 
@@ -923,12 +932,6 @@ class SubsetInfluenceLogreg(Experiment):
                        self.R['subset_self_pred_infl'],
                        self.R['subset_self_newton_infl'])
 
-        if self.num_classes == 2:
-            compare_newton('self', 'margin',
-                           self.R['subset_self_actl_margin_infl'],
-                           self.R['subset_self_pred_margin_infl'],
-                           self.R['subset_self_newton_margin_infl'])
-
         for i, test_idx in enumerate(self.R['fixed_test']):
             compare_newton('fixed-test-{}'.format(test_idx), 'loss',
                            self.R['subset_fixed_test_actl_infl'][:, i],
@@ -955,6 +958,12 @@ class SubsetInfluenceLogreg(Experiment):
                                       self.R['subset_fixed_test_actl_infl'][:, i],
                                       self.R['subset_fixed_test_pparam_infl'][:, i],
                                       'actl', 'pparam')
+
+            if self.num_classes == 2:
+                self.plot_group_influence('fixed-test-{}'.format(test_idx), 'margin',
+                                          self.R['subset_fixed_test_actl_margin_infl'][:, i],
+                                          self.R['subset_fixed_test_pparam_margin_infl'][:, i],
+                                          'actl', 'pparam')
 
     def plot_subset_sizes(self):
         if self.subset_choice_type != "range": return
