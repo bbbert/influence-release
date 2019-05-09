@@ -42,21 +42,31 @@ def plot_influence_correlation(ax,
                                xlabel="Actual influence",
                                ylabel="Predicted influence",
                                balanced=False,
+                               equal=True,
                                spearmanr=True):
     # Compute data bounds
+    minX, maxX = np.min(actl), np.max(actl)
+    minY, maxY = np.min(pred), np.max(pred)
+
+    if equal:
+        minX = minY = min(minX, minY)
+        maxX = maxY = max(maxX, maxY)
+
     if balanced:
-        maxW = max(np.max(np.abs(actl)), np.max(np.abs(pred)))
-        minW = -maxW
-    else:
-        maxW = max(np.max(actl), np.max(pred))
-        minW = min(np.min(actl), np.min(pred))
+        maxX = np.max(np.abs(minX), np.abs(maxX))
+        minX = -maxX
+        maxY = np.max(np.abs(minY), np.abs(maxY))
+        minY = -maxY
 
     # Expand bounds
-    padding = 0.05 * (maxW - minW)
-    minW, maxW = minW - padding, maxW + padding
+    padX = 0.05 * (maxX - minX)
+    padY = 0.05 * (maxY - minY)
+    minW, maxW = min(minX, minY), max(maxX, maxY)
+    padW = max(padX, padY)
 
     # Plot x=y
-    ax.plot([minW, maxW], [minW, maxW], color='grey', alpha=0.3)
+    ax.plot([minW - padW, maxW + padW],
+            [minW - padW, maxW + padW], color='grey', alpha=0.3)
 
     # Color groups of points if tagged
     if colors is None and label is not None:
@@ -80,8 +90,8 @@ def plot_influence_correlation(ax,
     ax.scatter(actl, pred, color=colors, alpha=alpha, s=size)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set_xlim([minW, maxW])
-    ax.set_ylim([minW, maxW])
+    ax.set_xlim([minX - padX, maxX + padX])
+    ax.set_ylim([minY - padY, maxY + padY])
 
     if subtitle is not None:
         title = title + "\n" + subtitle

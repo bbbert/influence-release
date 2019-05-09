@@ -816,20 +816,31 @@ class SubsetInfluenceLogreg(Experiment):
         xlabel = approx_type_to_label[x_approx_type]
         ylabel = approx_type_to_label[y_approx_type]
 
-        min_size, max_size = np.min(subset_sizes), np.max(subset_sizes)
-        colors = None
-        #colors = plt.cm.rainbow((subset_sizes - min_size) / (max_size - min_size))
-
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         plot_influence_correlation(ax[0][0], x, y,
                                    label=subset_tags,
                                    title=title,
                                    subtitle=self.get_subtitle(),
                                    xlabel=xlabel,
-                                   ylabel=ylabel,
-                                   colors=colors)
+                                   ylabel=ylabel)
         fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
         plt.close(fig)
+
+        range_x, range_y = np.max(x) - np.min(x), np.max(y) - np.min(y)
+        imbalanced = range_x / range_y < 1e-1 or range_y / range_x < 1e-1
+        if imbalanced:
+            filename = '{}_{}_{}-{}_imbalanced.png'.format(
+                influence_type, quantity, x_approx_type, y_approx_type)
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+            plot_influence_correlation(ax[0][0], x, y,
+                                       label=subset_tags,
+                                       title=title,
+                                       subtitle=self.get_subtitle(),
+                                       xlabel=xlabel,
+                                       ylabel=ylabel,
+                                       equal=False)
+            fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
+            plt.close(fig)
 
     def plot_self_influence(self):
         if 'subset_self_actl_infl' not in self.R: return
