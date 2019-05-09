@@ -936,6 +936,9 @@ class SubsetInfluenceLogreg(Experiment):
                         bbox_inches='tight')
             plt.close(fig)
 
+        if 'subset_train_accuracy' not in self.R: return
+        if 'subset_test_accuracy' not in self.R: return
+
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         plot_against_subset_size(ax[0][0],
                                  self.R['subset_tags'],
