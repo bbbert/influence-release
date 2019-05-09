@@ -73,6 +73,8 @@ if __name__ == "__main__":
             'spam': (1e-4, 1e-1, 4),
             'cifar10_small': (1e-3, 1, 4),
             'cifar10': (1e-3, 1, 4),
+            'dogfish': (1e-4, 1e-1, 10),
+            'animals': (1e-4, 1e-1, 10),
         }[args.dataset_id],
         'inverse_hvp_method': {
             'hospital': 'explicit',
@@ -81,6 +83,8 @@ if __name__ == "__main__":
             'spam': 'explicit',
             'cifar10_small': 'cg',
             'cifar10': 'cg',
+            'dogfish': 'explicit',
+            'animals': 'explicit',
         }[args.dataset_id],
         'inverse_vp_method': 'lu' if args.dataset_id == 'mnist_small' else 'cholesky',
         'max_memory': int(args.max_memory),

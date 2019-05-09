@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    dataset_ids = ['mnist', 'mnist_small', 'spam', 'hospital', 'cifar10', 'cifar10_small']
+    dataset_ids = ['mnist', 'mnist_small', 'spam', 'hospital', 'cifar10', 'cifar10_small', 'dogfish', 'animals']
     for dataset_id in dataset_ids:
         print("Loading {}".format(dataset_id))
         dataset = datasets.loader.load_dataset(dataset_id=dataset_id,

@@ -8,6 +8,7 @@ import datasets.mnist
 import datasets.spam
 import datasets.hospital
 import datasets.cifar10
+import datasets.processed_animals
 import datasets.common
 
 DATASETS = {
@@ -17,6 +18,8 @@ DATASETS = {
     'hospital': ds.hospital.load_hospital,
     'cifar10': ds.cifar10.load_cifar10,
     'cifar10_small': ds.cifar10.load_small_cifar10,
+    'dogfish': ds.processed_animals.load_dogfish,
+    'animals': ds.processed_animals.load_animals,
 }
 
 def load_dataset(dataset_id,
