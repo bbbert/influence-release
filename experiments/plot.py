@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
 import seaborn as sns
+import scipy.stats
 sns.set()
 
 def plot_distribution(ax, value,
@@ -40,7 +41,8 @@ def plot_influence_correlation(ax,
                                subtitle="None",
                                xlabel="Actual influence",
                                ylabel="Predicted influence",
-                               balanced=False):
+                               balanced=False,
+                               spearmanr=True):
     # Compute data bounds
     if balanced:
         maxW = max(np.max(np.abs(actl)), np.max(np.abs(pred)))
@@ -83,6 +85,9 @@ def plot_influence_correlation(ax,
 
     if subtitle is not None:
         title = title + "\n" + subtitle
+    if spearmanr:
+        rho, pval = scipy.stats.spearmanr(actl, pred)
+        title = title + "\n" + "Spearman $\\rho$ = {}, $p$ = {}".format(rho, pval)
     ax.set_title(title)
 
 def plot_against_subset_size(ax,
