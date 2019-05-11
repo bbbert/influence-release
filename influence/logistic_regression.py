@@ -634,6 +634,17 @@ class LogisticRegression(Model):
                 self.matrix_placeholder: matrix,
                 self.vectors_placeholder: vectors.T,
             })
+        elif method == "cholesky_lu":
+            try:
+                inverse_vp = self.sess.run(self.inverse_vp_cho, feed_dict={
+                    self.matrix_placeholder: matrix,
+                    self.vectors_placeholder: vectors.T,
+                })
+            except:
+                inverse_vp = self.sess.run(self.inverse_vp_lu, feed_dict={
+                    self.matrix_placeholder: matrix,
+                    self.vectors_placeholder: vectors.T,
+                })
         else:
             raise ValueError("Unknown inverse VP method {}".format(method))
         return inverse_vp

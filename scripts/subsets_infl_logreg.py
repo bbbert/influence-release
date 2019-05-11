@@ -80,7 +80,7 @@ if __name__ == "__main__":
             'dogfish': 'explicit',
             'animals': 'cg',
         }[args.dataset_id],
-        'inverse_vp_method': 'lu' if args.dataset_id == 'mnist_small' else 'cholesky',
+        'inverse_vp_method': 'cholesky_lu',
         'max_memory': int(args.max_memory),
         'skip_hessian_spectrum': args.skip_hessian_spectrum,
         'tag': None
