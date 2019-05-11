@@ -790,41 +790,47 @@ class SubsetInfluenceLogreg(Experiment):
         if self.num_classes == 2:
             initial_fixed_test_margin = self.R['initial_test_margins'][fixed_test]
 
-        # Calculate change in loss/margin at predicted parameters
-        subset_fixed_test_pparam_infl = []
-        subset_self_pparam_infl = []
-        subset_fixed_test_pparam_margin_infl = []
-        for i, remove_indices in enumerate(subset_indices):
-            subset_ds = self.train.subset(remove_indices)
-            pred_param = initial_param + self.R['subset_pred_dparam'][i, :]
-            model.set_params_flat(pred_param)
+        def compute_pparam_influences(pred_dparam, pparam_type='pparam'):
+            # Calculate change in loss/margin at predicted parameters
+            subset_fixed_test_pparam_infl = []
+            subset_self_pparam_infl = []
+            subset_fixed_test_pparam_margin_infl = []
+            for i, remove_indices in enumerate(subset_indices):
+                subset_ds = self.train.subset(remove_indices)
+                pred_param = initial_param + pred_dparam[i, :]
+                model.set_params_flat(pred_param)
 
-            pparam_fixed_test_loss = model.get_indiv_loss(fixed_test_ds, verbose=False)
-            pparam_self_loss = model.get_total_loss(subset_ds, l2_reg=0, verbose=False)
-            initial_self_loss = np.sum(self.R['initial_train_losses'][remove_indices])
-            subset_fixed_test_pparam_infl.append(pparam_fixed_test_loss - initial_fixed_test_loss)
-            subset_self_pparam_infl.append(pparam_self_loss - initial_self_loss)
+                pparam_fixed_test_loss = model.get_indiv_loss(fixed_test_ds, verbose=False)
+                pparam_self_loss = model.get_total_loss(subset_ds, l2_reg=0, verbose=False)
+                initial_self_loss = np.sum(self.R['initial_train_losses'][remove_indices])
+                subset_fixed_test_pparam_infl.append(pparam_fixed_test_loss - initial_fixed_test_loss)
+                subset_self_pparam_infl.append(pparam_self_loss - initial_self_loss)
 
+                if self.num_classes == 2:
+                    pparam_fixed_test_margin = model.get_indiv_margin(fixed_test_ds, verbose=False)
+                    subset_fixed_test_pparam_margin_infl.append(pparam_fixed_test_margin - initial_fixed_test_margin)
+
+            res['subset_fixed_test_{}_infl'.format(pparam_type)] = np.array(subset_fixed_test_pparam_infl)
+            res['subset_self_{}_infl'.format(pparam_type)] = np.array(subset_self_pparam_infl)
             if self.num_classes == 2:
-                pparam_fixed_test_margin = model.get_indiv_margin(fixed_test_ds, verbose=False)
-                subset_fixed_test_pparam_margin_infl.append(pparam_fixed_test_margin - initial_fixed_test_margin)
+                res['subset_fixed_test_{}_margin_infl'.format(pparam_type)] = np.array(subset_fixed_test_pparam_margin_infl)
 
-        res['subset_fixed_test_pparam_infl'] = np.array(subset_fixed_test_pparam_infl)
-        res['subset_self_pparam_infl'] = np.array(subset_self_pparam_infl)
-        if self.num_classes == 2:
-            res['subset_fixed_test_pparam_margin_infl'] = np.array(subset_fixed_test_pparam_margin_infl)
+        compute_pparam_influences(self.R['subset_pred_dparam'], 'pparam')
+        if not self.config['skip_newton']:
+            compute_pparam_influences(self.R['subset_newton_dparam'], 'nparam')
 
         return res
 
-    def plot_z_norms(self):
+    def plot_z_norms(self, save_and_close=False):
         if 'z_norms' not in self.R: return
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         plot_distribution(ax[0][0], self.R['z_norms'],
                           title='Z-norms', xlabel='Z-norm',
                           subtitle=self.get_subtitle())
-        fig.savefig(os.path.join(self.plot_dir, 'z-norms.png'),
-                    bbox_inches='tight')
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, 'z-norms.png'), bbox_inches='tight')
+            plt.close(fig)
 
     def get_simple_subset_tags(self):
         def simplify_tag(tag):
@@ -847,7 +853,8 @@ class SubsetInfluenceLogreg(Experiment):
                              influence_type, # 'self' or 'fixed-test-{:test_idx}'
                              quantity, # 'loss' or 'margin'
                              x, y,
-                             x_approx_type, y_approx_type): # 'actl', 'pred', 'newton'
+                             x_approx_type, y_approx_type, # 'actl', 'pred', 'newton'
+                             save_and_close=False):
         subset_tags = self.get_simple_subset_tags()
         subset_sizes = np.array([len(indices) for indices in self.R['subset_indices']])
 
@@ -875,8 +882,9 @@ class SubsetInfluenceLogreg(Experiment):
                                    subtitle=self.get_subtitle(),
                                    xlabel=xlabel,
                                    ylabel=ylabel)
-        fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
-        plt.close(fig)
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
+            plt.close(fig)
 
         try:
             range_x, range_y = np.max(x) - np.min(x), np.max(y) - np.min(y)
@@ -894,25 +902,28 @@ class SubsetInfluenceLogreg(Experiment):
                                        xlabel=xlabel,
                                        ylabel=ylabel,
                                        equal=False)
-            fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
-            plt.close(fig)
+            if save_and_close:
+                fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
+                plt.close(fig)
 
-    def plot_self_influence(self):
+    def plot_self_influence(self, save_and_close=False):
         if 'subset_self_actl_infl' not in self.R: return
         if 'subset_self_pred_infl' not in self.R: return
 
         self.plot_group_influence('self', 'loss',
                                   self.R['subset_self_actl_infl'],
                                   self.R['subset_self_pred_infl'],
-                                  'actl', 'pred')
+                                  'actl', 'pred',
+                                  save_and_close=save_and_close)
 
         if self.num_classes == 2:
             self.plot_group_influence('self', 'margin',
                                       self.R['subset_self_actl_margin_infl'],
                                       self.R['subset_self_pred_margin_infl'],
-                                      'actl', 'pred')
+                                      'actl', 'pred',
+                                      save_and_close=save_and_close)
 
-    def plot_fixed_test_influence(self):
+    def plot_fixed_test_influence(self, save_and_close=False):
         if 'subset_fixed_test_actl_infl' not in self.R: return
         if 'subset_fixed_test_pred_infl' not in self.R: return
 
@@ -922,21 +933,25 @@ class SubsetInfluenceLogreg(Experiment):
             self.plot_group_influence('fixed-test-{}'.format(test_idx), 'loss',
                                       self.R['subset_fixed_test_actl_infl'][:, i],
                                       self.R['subset_fixed_test_pred_infl'][:, i],
-                                      'actl', 'pred')
+                                      'actl', 'pred',
+                                      save_and_close=save_and_close)
 
             if self.num_classes == 2:
                 self.plot_group_influence('fixed-test-{}'.format(test_idx), 'margin',
                                           self.R['subset_fixed_test_actl_margin_infl'][:, i],
                                           self.R['subset_fixed_test_pred_margin_infl'][:, i],
-                                          'actl', 'pred')
+                                          'actl', 'pred',
+                                          save_and_close=save_and_close)
 
-    def plot_newton_influence(self):
+    def plot_newton_influence(self, save_and_close=False):
         if 'subset_self_newton_infl' not in self.R: return
         if 'subset_fixed_test_newton_infl' not in self.R: return
 
         def compare_newton(influence_type, quantity, actl, pred, newton):
-            self.plot_group_influence(influence_type, quantity, actl, newton, 'actl', 'newton')
-            self.plot_group_influence(influence_type, quantity, pred, newton, 'pred', 'newton')
+            self.plot_group_influence(influence_type, quantity, actl, newton, 'actl', 'newton',
+                                      save_and_close=save_and_close)
+            self.plot_group_influence(influence_type, quantity, pred, newton, 'pred', 'newton',
+                                      save_and_close=save_and_close)
 
         compare_newton('self', 'loss',
                        self.R['subset_self_actl_infl'],
@@ -955,28 +970,31 @@ class SubsetInfluenceLogreg(Experiment):
                                self.R['subset_fixed_test_pred_margin_infl'][:, i],
                                self.R['subset_fixed_test_newton_margin_infl'][:, i])
 
-    def plot_pparam_influence(self):
+    def plot_pparam_influence(self, save_and_close=False):
         if 'subset_self_pparam_infl' not in self.R: return
         if 'subset_fixed_test_pparam_infl' not in self.R: return
 
         self.plot_group_influence('self', 'loss',
                                   self.R['subset_self_actl_infl'],
                                   self.R['subset_self_pparam_infl'],
-                                  'actl', 'pparam')
+                                  'actl', 'pparam',
+                                  save_and_close=save_and_close)
 
         for i, test_idx in enumerate(self.R['fixed_test']):
             self.plot_group_influence('fixed-test-{}'.format(test_idx), 'loss',
                                       self.R['subset_fixed_test_actl_infl'][:, i],
                                       self.R['subset_fixed_test_pparam_infl'][:, i],
-                                      'actl', 'pparam')
+                                      'actl', 'pparam',
+                                      save_and_close=save_and_close)
 
             if self.num_classes == 2:
                 self.plot_group_influence('fixed-test-{}'.format(test_idx), 'margin',
                                           self.R['subset_fixed_test_actl_margin_infl'][:, i],
                                           self.R['subset_fixed_test_pparam_margin_infl'][:, i],
-                                          'actl', 'pparam')
+                                          'actl', 'pparam',
+                                          save_and_close=save_and_close)
 
-    def plot_subset_sizes(self):
+    def plot_subset_sizes(self, save_and_close=False):
         if self.subset_choice_type != "range": return
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -987,9 +1005,10 @@ class SubsetInfluenceLogreg(Experiment):
                                  title='Group self-influence',
                                  ylabel='Self-influence',
                                  subtitle=self.get_subtitle())
-        fig.savefig(os.path.join(self.plot_dir, 'sizes_self_loss.png'),
-                    bbox_inches='tight')
-        plt.close(fig)
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, 'sizes_self_loss.png'),
+                        bbox_inches='tight')
+            plt.close(fig)
 
         for i, test_idx in enumerate(self.R['fixed_test']):
             fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -999,9 +1018,10 @@ class SubsetInfluenceLogreg(Experiment):
                                      self.R['subset_fixed_test_pred_infl'][:, i],
                                      title='Group influence on test pt {}'.format(test_idx),
                                      subtitle=self.get_subtitle())
-            fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-{}_loss.png'.format(test_idx)),
-                        bbox_inches='tight')
-            plt.close(fig)
+            if save_and_close:
+                fig.savefig(os.path.join(self.plot_dir, 'sizes_fixed-test-{}_loss.png'.format(test_idx)),
+                            bbox_inches='tight')
+                plt.close(fig)
 
         if 'subset_train_accuracy' not in self.R: return
         if 'subset_test_accuracy' not in self.R: return
@@ -1014,9 +1034,10 @@ class SubsetInfluenceLogreg(Experiment):
                                  title='Train accuracy by subset size',
                                  ylabel='Train accuracy',
                                  subtitle=self.get_subtitle())
-        fig.savefig(os.path.join(self.plot_dir, 'sizes_train-accuracy.png'),
-                    bbox_inches='tight')
-        plt.close(fig)
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, 'sizes_train-accuracy.png'),
+                        bbox_inches='tight')
+            plt.close(fig)
 
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -1027,11 +1048,12 @@ class SubsetInfluenceLogreg(Experiment):
                                  title='Test accuracy by subset size',
                                  ylabel='Test accuracy',
                                  subtitle=self.get_subtitle())
-        fig.savefig(os.path.join(self.plot_dir, 'sizes_test-accuracy.png'),
-                    bbox_inches='tight')
-        plt.close(fig)
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, 'sizes_test-accuracy.png'),
+                        bbox_inches='tight')
+            plt.close(fig)
 
-    def plot_subset_hessian(self):
+    def plot_subset_hessian(self, save_and_close=False):
         if 'subset_hessian_spectrum' not in self.R: return
 
         fig, ax = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
@@ -1041,15 +1063,16 @@ class SubsetInfluenceLogreg(Experiment):
                           title="Maximum eigenvalue of $H_{\lambda}(s)^{-1} H(w)$",
                           subtitle=self.get_subtitle(),
                           xlabel='Eigenvalue')
-        fig.savefig(os.path.join(self.plot_dir, 'subset-hessian-max-eig.png'),
-                    bbox_inches='tight')
-        plt.close(fig)
+        if save_and_close:
+            fig.savefig(os.path.join(self.plot_dir, 'subset-hessian-max-eig.png'),
+                        bbox_inches='tight')
+            plt.close(fig)
 
-    def plot_all(self):
-        self.plot_self_influence()
-        self.plot_fixed_test_influence()
-        self.plot_newton_influence()
-        self.plot_pparam_influence()
-        self.plot_z_norms()
-        self.plot_subset_sizes()
-        self.plot_subset_hessian()
+    def plot_all(self, save_and_close=False):
+        self.plot_self_influence(save_and_close)
+        self.plot_fixed_test_influence(save_and_close)
+        self.plot_newton_influence(save_and_close)
+        self.plot_pparam_influence(save_and_close)
+        self.plot_z_norms(save_and_close)
+        self.plot_subset_sizes(save_and_close)
+        self.plot_subset_hessian(save_and_close)

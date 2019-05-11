@@ -30,4 +30,4 @@ if __name__ == "__main__":
         if ext == ".png":
             os.remove(os.path.join(E.plot_dir, image_path))
 
-    E.plot_all()
+    E.plot_all(save_and_close=True)
