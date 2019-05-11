@@ -70,20 +70,23 @@ class SubsetInfluenceLogreg(Experiment):
     @property
     def run_id(self):
         if self.subset_choice_type == "types":
-            return "{}_ihvp-{}_seed-{}_size-{}_num-{}".format(
+            run_id = "{}_ihvp-{}_seed-{}_size-{}_num-{}".format(
                 self.config['dataset_config']['dataset_id'],
                 self.config['inverse_hvp_method'],
                 self.config['subset_seed'],
                 self.config['subset_rel_size'],
                 self.config['num_subsets'])
         elif self.subset_choice_type == "range":
-            return "{}_ihvp-{}_seed-{}_sizes-{}-{}_num-{}".format(
+            run_id = "{}_ihvp-{}_seed-{}_sizes-{}-{}_num-{}".format(
                 self.config['dataset_config']['dataset_id'],
                 self.config['inverse_hvp_method'],
                 self.config['subset_seed'],
                 self.config['subset_min_rel_size'],
                 self.config['subset_max_rel_size'],
                 self.config['num_subsets'])
+        if self.config.get('tag', None) is not None:
+            run_id = "{}_{}".format(run_id, self.config['tag'])
+        return run_id
 
     def get_model(self):
         if not hasattr(self, 'model'):
@@ -168,6 +171,8 @@ class SubsetInfluenceLogreg(Experiment):
             fixed_test = [6172, 2044, 2293, 5305, 324, 3761]
         elif dataset_id == "processed_imageNet":
             fixed_test = [684, 850, 1492, 2357, 480, 2288]
+        elif dataset_id == "dogfish":
+            fixed_test = [300, 339, 222, 520, 323, 182]
         else:
             test_losses = self.R['initial_test_losses']
             argsort = np.argsort(test_losses)
@@ -209,6 +214,7 @@ class SubsetInfluenceLogreg(Experiment):
             'l2_reg': l2_reg,
             'verbose': False,
             'verbose_cg': True,
+            'inverse_vp_method': self.config['inverse_vp_method'],
         }
 
         fixed_test = self.R['fixed_test']
@@ -451,6 +457,7 @@ class SubsetInfluenceLogreg(Experiment):
             'l2_reg': l2_reg,
             'verbose': False,
             'verbose_cg': True,
+            'inverse_vp_method': self.config['inverse_vp_method'],
         }
         train_grad_loss = self.R['train_grad_loss']
 
@@ -755,6 +762,7 @@ class SubsetInfluenceLogreg(Experiment):
             'l2_reg': l2_reg,
             'verbose': False,
             'verbose_cg': True,
+            'inverse_vp_method': self.config['inverse_vp_method'],
         }
 
         # z_i = sqrt(sigma''_i) x_i so that H = ZZ^T
@@ -870,8 +878,11 @@ class SubsetInfluenceLogreg(Experiment):
         fig.savefig(os.path.join(self.plot_dir, filename), bbox_inches='tight')
         plt.close(fig)
 
-        range_x, range_y = np.max(x) - np.min(x), np.max(y) - np.min(y)
-        imbalanced = range_x / range_y < 1e-1 or range_y / range_x < 1e-1
+        try:
+            range_x, range_y = np.max(x) - np.min(x), np.max(y) - np.min(y)
+            imbalanced = range_x / range_y < 1e-1 or range_y / range_x < 1e-1
+        except:
+            imbalanced = False
         if imbalanced:
             filename = '{}_{}_{}-{}_imbalanced.png'.format(
                 influence_type, quantity, x_approx_type, y_approx_type)

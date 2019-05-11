@@ -34,6 +34,8 @@ if __name__ == "__main__":
     parser.add_argument('--skip-hessian-spectrum', dest='skip_hessian_spectrum', action='store_true',
                         help="Whether to skip the computation of the hessian spectrum")
     parser.set_defaults(skip_hessian_spectrum=False)
+    parser.add_argument("--fixed-reg", default=None, type=float,
+                        help="Fix the regularization instead of using cV")
 
     # For subset-choice-type = "types"
     parser.add_argument('--subset-rel-size', default=0.1, type=float,
@@ -48,7 +50,9 @@ if __name__ == "__main__":
                         help="The maximum size of a subset relative to the dataset")
 
     parser.add_argument('--inverse-hvp-method', default=None, type=str,
-                        help="The dataset to use")
+                        help="The inverse HVP method to use")
+    parser.add_argument('--inverse-vp-method', default=None, type=str,
+                        help="The inverse VP method to use")
     args = parser.parse_args()
 
     dataset_config = {
@@ -66,16 +70,6 @@ if __name__ == "__main__":
         'subset_max_rel_size': args.subset_max_rel_size,
         'num_subsets': args.num_subsets,
         'cross_validation_folds': 5,
-        'normalized_cross_validation_range': {
-            'hospital': (1e-4, 1e-1, 10),
-            'mnist_small': (1e-3, 1, 4),
-            'mnist': (1e-3, 1, 4),
-            'spam': (1e-4, 1e-1, 4),
-            'cifar10_small': (1e-3, 1, 4),
-            'cifar10': (1e-3, 1, 4),
-            'dogfish': (1e-4, 1e-1, 10),
-            'animals': (1e-4, 1e-1, 10),
-        }[args.dataset_id],
         'inverse_hvp_method': {
             'hospital': 'explicit',
             'mnist_small': 'explicit',
@@ -89,14 +83,37 @@ if __name__ == "__main__":
         'inverse_vp_method': 'lu' if args.dataset_id == 'mnist_small' else 'cholesky',
         'max_memory': int(args.max_memory),
         'skip_hessian_spectrum': args.skip_hessian_spectrum,
+        'tag': None
     }
 
     if args.inverse_hvp_method is not None:
         config['inverse_hvp_method'] = args.inverse_hvp_method
 
+    if args.inverse_vp_method is not None:
+        config['inverse_vp_method'] = args.inverse_vp_method
+
     config['skip_newton'] = config['inverse_hvp_method'] != 'explicit'
     config['skip_z_norms'] = config['inverse_hvp_method'] != 'explicit'
     config['skip_param_change_norms'] = config['inverse_hvp_method'] != 'explicit'
+
+    if args.fixed_reg is None:
+        config['normalized_cross_validation_range'] = {
+            'hospital': (1e-4, 1e-1, 10),
+            'mnist_small': (1e-3, 1, 4),
+            'mnist': (1e-3, 1, 4),
+            'spam': (1e-4, 1e-1, 4),
+            'cifar10_small': (1e-3, 1, 4),
+            'cifar10': (1e-3, 1, 4),
+            'dogfish': (1e-4, 1e-1, 10),
+            'animals': (1e-4, 1e-1, 10),
+        }[args.dataset_id]
+    else:
+        # Perform a run with a fixed regularization
+        config['tag'] = "rel-reg-{}".format(args.fixed_reg)
+        config['normalized_cross_validation_range'] = (args.fixed_reg, args.fixed_reg, 1)
+        config['skip_newton'] = False
+        config['skip_z_norms'] = True
+        config['skip_param_change_norms'] = True
 
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
     exp.run(force_refresh=args.force_refresh,
