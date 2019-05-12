@@ -72,7 +72,7 @@ if __name__ == "__main__":
         'cross_validation_folds': 5,
         'inverse_hvp_method': {
             'hospital': 'explicit',
-            'mnist_small': 'explicit',
+            'mnist_small': 'cg',
             'mnist': 'cg',
             'spam': 'explicit',
             'cifar10_small': 'cg',
@@ -96,6 +96,9 @@ if __name__ == "__main__":
     config['skip_z_norms'] = config['inverse_hvp_method'] != 'explicit'
     config['skip_param_change_norms'] = config['inverse_hvp_method'] != 'explicit'
 
+    if args.dataset_id == "mnist_small":
+        config['skip_newton'] = False
+
     if args.fixed_reg is None:
         config['normalized_cross_validation_range'] = {
             'hospital': (1e-4, 1e-1, 10),
@@ -118,3 +121,4 @@ if __name__ == "__main__":
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
     exp.run(force_refresh=args.force_refresh,
             invalidate_phase=args.invalidate)
+    exp.plot_all(save_and_close=True)

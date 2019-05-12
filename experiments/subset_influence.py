@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import scipy.linalg
 
 from sklearn.cluster import KMeans
+import scipy.cluster.hierarchy as hcluster
 
 @collect_phases
 class SubsetInfluenceLogreg(Experiment):
@@ -169,10 +170,14 @@ class SubsetInfluenceLogreg(Experiment):
             fixed_test = [14, 7, 10, 6, 15, 3]
         elif dataset_id == "mnist_small":
             fixed_test = [6172, 2044, 2293, 5305, 324, 3761]
-        elif dataset_id == "processed_imageNet":
-            fixed_test = [684, 850, 1492, 2357, 480, 2288]
+        elif dataset_id == "mnist":
+            fixed_test = [9009, 1790, 2293, 5844, 8977, 9433]
         elif dataset_id == "dogfish":
             fixed_test = [300, 339, 222, 520, 323, 182]
+        elif dataset_id == "animals":
+            fixed_test = [684,  850, 1492, 2380, 1539, 1267]
+        elif dataset_id == "cifar10":
+            fixed_test = [3629, 1019, 5259, 1082, 4237, 6811]
         else:
             test_losses = self.R['initial_test_losses']
             argsort = np.argsort(test_losses)
@@ -244,58 +249,18 @@ class SubsetInfluenceLogreg(Experiment):
 
         return res
 
-    def get_random_subsets(self, rng, subset_sizes=None):
+    def get_random_subsets(self, rng, subset_sizes):
         subsets = []
-        for i in range(self.num_subsets):
-            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+        for i, subset_size in enumerate(subset_sizes):
             subsets.append(rng.choice(self.num_train, subset_size, replace=False))
         return np.array(subsets)
 
-    def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes=None):
-        max_subset_size = self.subset_size if subset_sizes is None else np.max(subset_sizes)
-        window = 2 * max_subset_size
-        assert window <= self.num_train
-
-        scalar_infl_indices = np.argsort(pred_infl).reshape(-1)
-        pos_subsets, neg_subsets = [], []
-        for i in range(self.num_subsets):
-            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
-            neg_subsets.append(rng.choice(scalar_infl_indices[:window], subset_size, replace=False))
-            pos_subsets.append(rng.choice(scalar_infl_indices[-window:], subset_size, replace=False))
-        return np.array(neg_subsets), np.array(pos_subsets)
-
-    def get_same_grad_dir(self, rng, train_grad_loss, subset_sizes=None):
-        # Using Pigeonhole to guarantee we get a sufficiently large cluster
-        if self.subset_choice_type == "range":
-            max_rel_size = self.config['subset_max_rel_size']
-        else:
-            max_rel_size = self.config['subset_rel_size']
-        n_clusters = int(math.floor(1 / max_rel_size))
-
-        km = KMeans(n_clusters=n_clusters)
-        km.fit(train_grad_loss)
-        cluster_labels, centroids = km.labels_, km.cluster_centers_
-        _, counts = np.unique(cluster_labels, return_counts=True)
-
-        cluster_indices = [ np.nonzero(cluster_labels == i)[0] for i in range(len(centroids)) ]
-        subsets = []
-        for i in range(self.num_subsets):
-            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
-            valid_clusters = [ i for i, count in enumerate(counts) if count >= subset_size ]
-            if len(valid_clusters) == 0: continue
-
-            cluster_idx = rng.choice(valid_clusters)
-            subset = rng.choice(cluster_indices[cluster_idx], subset_size, replace=False)
-            subsets.append(subset)
-        return np.array(subsets)
-
-    def get_same_class_subsets(self, rng, labels, subset_sizes=None):
+    def get_same_class_subsets(self, rng, labels, subset_sizes):
         label_vals, label_counts = np.unique(labels, return_counts=True)
         label_indices = [ np.nonzero(labels == label_val)[0] for label_val in label_vals ]
 
         subsets = []
-        for i in range(self.num_subsets):
-            subset_size = self.subset_size if subset_sizes is None else subset_sizes[i]
+        for i, subset_size in enumerate(subset_sizes):
             valid_label_indices = np.nonzero(label_counts >= subset_size)[0]
 
             if len(valid_label_indices) == 0: continue
@@ -304,97 +269,92 @@ class SubsetInfluenceLogreg(Experiment):
             subsets.append(subset)
         return np.array(subsets)
 
-    def get_same_features_subsets(self, rng, features, labels):
-        dataset_id = self.config['dataset_config']['dataset_id']
-        center_data = self.config['dataset_config']['center_data']
-        if dataset_id == 'hospital' and not center_data:
-            indices = np.where(features[:,9]==1)[0]
-            indices = np.where(features[indices,1]>5)[0]
-            indices = np.where(features[indices,26]==1)[0]
-            indices = np.where(features[indices,14]==1)[0]
-            indices = np.where(features[indices,3]>5)[0]
-            subsets = []
-            print('Features subset has {} examples total'.format(len(indices)))
-            for i in range(self.num_subsets):
-                subsets.append(rng.choice(indices, 4*len(indices)//5, replace=False))
-            return subsets
+    def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes):
+        window = 2 * np.max(subset_sizes)
+        assert window <= self.num_train
+
+        scalar_infl_indices = np.argsort(pred_infl).reshape(-1)
+        pos_subsets, neg_subsets = [], []
+        for i, subset_size in enumerate(subset_sizes):
+            neg_subsets.append(rng.choice(scalar_infl_indices[:window], subset_size, replace=False))
+            pos_subsets.append(rng.choice(scalar_infl_indices[-window:], subset_size, replace=False))
+        return np.array(neg_subsets), np.array(pos_subsets)
+
+    def get_clusters(self, X, n_clusters=None):
+        """
+        Clusters a set of points and returns the indices of the points
+        within each cluster.
+        :param X: An (N, D) tensor representing N points in D dimensions
+        :param n_clusters: The number of clusters to use for KMeans, or None to use hierarchical
+                           clustering and automatically determine the number of clusters.
+        :returns: cluster_indices, a list of lists of indices
+        """
+        if n_clusters is None:
+            cluster_labels = hcluster.fclusterdata(X, 1)
+            print("Hierarchical clustering returned {} clusters".format(len(set(cluster_labels))))
         else:
-            print("Warning: unimplemented method to get subsets with the same features")
-            return []
+            km = KMeans(n_clusters=n_clusters)
+            km.fit(X)
+            cluster_labels = km.labels_
+        cluster_indices = [ np.nonzero(cluster_labels == label)[0] for label in set(cluster_labels) ]
+        return cluster_indices
+
+    def get_subsets_by_clustering(self, rng, X, subset_sizes):
+        cluster_indices = []
+        for n_clusters in (None, 4, 8, 16, 32, 64, 128):
+            cluster_indices.extend(self.get_clusters(X, n_clusters=n_clusters))
+        cluster_sizes = np.array([len(indices) for indices in cluster_indices])
+
+        subsets = []
+        for i, subset_size in enumerate(subset_sizes):
+            valid_clusters = np.nonzero(cluster_sizes >= subset_size)[0]
+            if len(valid_clusters) == 0: continue
+
+            cluster_idx = rng.choice(valid_clusters)
+            subset = rng.choice(cluster_indices[cluster_idx], subset_size, replace=False)
+            subsets.append(subset)
+        return np.array(subsets)
 
     @phase(5)
     def pick_subsets(self):
         rng = np.random.RandomState(self.config['subset_seed'])
 
-        if self.subset_choice_type == "types":
-            tagged_subsets = self.pick_subsets_many_types(rng)
-        elif self.subset_choice_type == "range":
-            tagged_subsets = self.pick_subsets_size_range(rng)
-
-        subset_tags = [tag for tag, subset in tagged_subsets]
-        subset_indices = [subset for tag, subset in tagged_subsets]
-
-        subset_sizes = np.unique([len(subset) for tag, subset in tagged_subsets])
-
-        return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
-
-    def pick_subsets_many_types(self, rng):
         tagged_subsets = []
+        if self.subset_choice_type == "types":
+            subset_sizes = np.ones(self.num_subsets).astype(np.int) * self.subset_size
+        elif self.subset_choice_type == "range":
+            subset_sizes = np.linspace(self.subset_min_size,
+                                       self.subset_max_size,
+                                       self.num_subsets).astype(np.int)
 
         with benchmark("Random subsets"):
-            random_subsets = self.get_random_subsets(rng)
+            random_subsets = self.get_random_subsets(rng, subset_sizes)
             tagged_subsets += [('random', s) for s in random_subsets]
 
         with benchmark("Same class subsets"):
-            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels)
+            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels, subset_sizes)
             same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
             tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
         with benchmark("Scalar infl tail subsets"):
             for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
-                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl)
+                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl, subset_sizes)
                 tagged_subsets += [('neg_tail_test-{}'.format(test_idx), s) for s in neg_tail_subsets]
                 tagged_subsets += [('pos_tail_test-{}'.format(test_idx), s) for s in pos_tail_subsets]
                 print('Found scalar infl tail subsets for test idx {}.'.format(test_idx))
 
         with benchmark("Same features subsets"):
-            same_features_subsets = self.get_same_features_subsets(rng, self.train.x, self.train.labels)
+            same_features_subsets = self.get_subsets_by_clustering(rng, self.train.x, subset_sizes)
             tagged_subsets += [('same_features', s) for s in same_features_subsets]
 
         with benchmark("Same gradient subsets"):
-            same_grad_subsets = self.get_same_grad_dir(rng, self.R['train_grad_loss'])
+            same_grad_subsets = self.get_subsets_by_clustering(rng, self.R['train_grad_loss'], subset_sizes)
             tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
 
-        return tagged_subsets
+        subset_tags = [tag for tag, subset in tagged_subsets]
+        subset_indices = [subset for tag, subset in tagged_subsets]
 
-    def pick_subsets_size_range(self, rng):
-        tagged_subsets = []
-        subset_sizes = np.linspace(self.subset_min_size,
-                                   self.subset_max_size,
-                                   self.num_subsets).astype(np.int)
-
-        with benchmark("Random subsets"):
-            random_subsets = self.get_random_subsets(rng, subset_sizes=subset_sizes)
-            tagged_subsets += [('random', s) for s in random_subsets]
-
-        with benchmark("Same class subsets"):
-            same_class_subsets = self.get_same_class_subsets(rng, self.train.labels, subset_sizes=subset_sizes)
-            same_class_subset_labels = [self.train.labels[s[0]] for s in same_class_subsets]
-            tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
-
-        with benchmark("Same gradient subsets"):
-            same_grad_subsets = self.get_same_grad_dir(rng, self.R['train_grad_loss'], subset_sizes=subset_sizes)
-            tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
-
-        with benchmark("Scalar infl tail subsets"):
-            for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
-                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl,
-                                                                                subset_sizes=subset_sizes)
-                tagged_subsets += [('neg_tail_test-{}'.format(test_idx), s) for s in neg_tail_subsets]
-                tagged_subsets += [('pos_tail_test-{}'.format(test_idx), s) for s in pos_tail_subsets]
-                print('Found scalar infl tail subsets for test idx {}.'.format(test_idx))
-
-        return tagged_subsets
+        return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
 
     @phase(6)
     def retrain(self):
@@ -576,7 +536,8 @@ class SubsetInfluenceLogreg(Experiment):
                                                        inverse_vp_method=self.config['inverse_vp_method']).reshape(-1)
 
                 if not self.config['skip_hessian_spectrum']:
-                    H_inv_H_w = model.get_inverse_vp(hessian, hessian_w)
+                    H_inv_H_w = model.get_inverse_vp(hessian, hessian_w,
+                                                     inverse_vp_method=self.config['inverse_vp_method'])
                     hessian_spectrum = scipy.linalg.eigvals(H_inv_H_w)
                     subset_hessian_spectrum.append(hessian_spectrum)
             elif self.config['inverse_hvp_method'] == 'cg':
