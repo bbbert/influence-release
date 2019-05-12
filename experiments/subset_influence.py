@@ -302,7 +302,11 @@ class SubsetInfluenceLogreg(Experiment):
     def get_subsets_by_clustering(self, rng, X, subset_sizes):
         cluster_indices = []
         for n_clusters in (None, 4, 8, 16, 32, 64, 128):
-            cluster_indices.extend(self.get_clusters(X, n_clusters=n_clusters))
+            with benchmark("Clustering with k={}".format(n_clusters)):
+                clusters = self.get_clusters(X, n_clusters=n_clusters)
+                print("Cluster sizes:", [len(cluster) for cluster in clusters])
+                cluster_indices.extend(clusters)
+
         cluster_sizes = np.array([len(indices) for indices in cluster_indices])
 
         subsets = []
@@ -314,6 +318,18 @@ class SubsetInfluenceLogreg(Experiment):
             subset = rng.choice(cluster_indices[cluster_idx], subset_size, replace=False)
             subsets.append(subset)
         return np.array(subsets)
+
+    def get_subsets_by_projection(self, rng, X, subset_sizes):
+        subsets = []
+        for subset_size in subset_sizes:
+            dim = rng.choice(X.shape[1])
+            indices = np.argsort(X[:, dim])
+            middle = rng.choice(X.shape[0])
+            st = max(middle - subset_size // 2, 0)
+            en = min(st + subset_size, self.num_train)
+            st = en - subset_size
+            subsets.append(indices[st:en])
+        return subsets
 
     @phase(5)
     def pick_subsets(self):
@@ -350,6 +366,10 @@ class SubsetInfluenceLogreg(Experiment):
         with benchmark("Same gradient subsets"):
             same_grad_subsets = self.get_subsets_by_clustering(rng, self.R['train_grad_loss'], subset_sizes)
             tagged_subsets += [('same_grad', s) for s in same_grad_subsets]
+
+        with benchmark("Same feature subsets by windowing"):
+            feature_window_subsets = self.get_subsets_by_projection(rng, self.train.x, subset_sizes)
+            tagged_subsets += [('feature_window', s) for s in feature_window_subsets]
 
         subset_tags = [tag for tag, subset in tagged_subsets]
         subset_indices = [subset for tag, subset in tagged_subsets]
@@ -517,16 +537,22 @@ class SubsetInfluenceLogreg(Experiment):
         hessian = self.R['hessian']
         train_grad_loss = self.R['train_grad_loss']
 
+        test_grad_loss = model.get_indiv_grad_loss(self.test.subset(self.R['fixed_test']))
+        if self.num_classes == 2:
+            test_grad_margin = model.get_indiv_grad_margin(self.test.subset(self.R['fixed_test']))
+
         # It is important that the gradients get calculated on the original model
         # so that the parameters are the original parameters
         start_time = time.time()
         subset_newton_dparam = []
         self_newton_infls = []
         self_newton_margin_infls = []
+        fixed_test_newton_infls = []
+        fixed_test_newton_margin_infls = []
         subset_hessian_spectrum = []
         for i, remove_indices in enumerate(subset_indices):
             if (i % n_report == 0):
-                print('Computing Newton self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
+                print('Computing Newton influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0).reshape(-1, 1)
             if self.config['inverse_hvp_method'] == 'explicit':
@@ -552,27 +578,35 @@ class SubsetInfluenceLogreg(Experiment):
                 }
                 H_inv_grad_loss = model.get_inverse_hvp(grad_loss, **inverse_hvp_args).reshape(-1)
 
-            newton_infl = np.dot(grad_loss.reshape(-1), H_inv_grad_loss)
+            self_newton_infl = np.dot(grad_loss.reshape(-1), H_inv_grad_loss)
             subset_newton_dparam.append(H_inv_grad_loss)
-            self_newton_infls.append(newton_infl)
+            self_newton_infls.append(self_newton_infl)
+
+            fixed_test_newton_infl = np.dot(test_grad_loss, H_inv_grad_loss)
+            fixed_test_newton_infls.append(fixed_test_newton_infl)
 
             if model.num_classes == 2:
                 s = np.zeros(self.num_train)
                 s[remove_indices] = 1
                 grad_margin = model.get_total_grad_margin(self.train, s)
-                newton_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
-                self_newton_margin_infls.append(newton_margin_infl)
+                self_newton_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
+                self_newton_margin_infls.append(self_newton_margin_infl)
+                fixed_test_newton_margin_infl = np.dot(test_grad_margin, H_inv_grad_loss)
+                fixed_test_newton_margin_infls.append(fixed_test_newton_margin_infl)
 
             if (i % n_report == 0):
                 cur_time = time.time()
                 time_per_vp = (cur_time - start_time) / (i + 1)
                 remaining_time = time_per_vp * (n - i - 1)
-                print('Each newton self-influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
+                print('Each Newton influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
 
         res['subset_newton_dparam'] = np.array(subset_newton_dparam)
         res['subset_self_newton_infl'] = np.array(self_newton_infls)
+        res['subset_fixed_test_newton_infl'] = np.array(fixed_test_newton_infls)
         if self.num_classes == 2:
             res['subset_self_newton_margin_infl'] = np.array(self_newton_margin_infls)
+            res['subset_fixed_test_newton_margin_infl'] = np.array(fixed_test_newton_margin_infls)
+
         if self.config['inverse_hvp_method'] == 'explicit' and not self.config['skip_hessian_spectrum']:
             res['subset_hessian_spectrum'] = np.array(subset_hessian_spectrum)
 
@@ -580,76 +614,8 @@ class SubsetInfluenceLogreg(Experiment):
 
     @phase(10)
     def fixed_test_newton(self):
-        if self.config['skip_newton']:
-            return dict()
-
-        model = self.get_model()
-        model.load('initial')
-        l2_reg = self.R['cv_l2_reg']
-        res = dict()
-
-        hessian = self.R['hessian']
-        fixed_test = self.R['fixed_test']
-        test_grad_loss = model.get_indiv_grad_loss(self.test.subset(fixed_test))
-        train_grad_loss = self.R['train_grad_loss']
-
-        if self.num_classes == 2:
-            test_grad_margin = model.get_indiv_grad_margin(self.test.subset(fixed_test))
-
-        n, n_report = self.num_train, max(self.num_train // 100, 1)
-
-        start_time = time.time()
-        fixed_test_newton_infl = []
-        fixed_test_newton_margin_infl = []
-        for i in range(self.num_train):
-            if (i % n_report == 0):
-                print('Computing fixed test Newton influences for train idx {} out of {}'.format(i, n))
-
-            grad_loss = train_grad_loss[i, :].reshape(-1, 1)
-            if self.config['inverse_hvp_method'] == 'explicit':
-                hessian_sw = hessian - model.get_hessian(self.train.subset([i]),
-                                                         np.ones(1), l2_reg=0, verbose=False)
-                H_inv_grad_loss = model.get_inverse_vp(hessian_sw, grad_loss,
-                                                       inverse_vp_method=self.config['inverse_vp_method']).reshape(-1)
-
-            elif self.config['inverse_hvp_method'] == 'cg':
-                sample_weights = np.ones(self.num_train)
-                sample_weights[i] = 0
-                inverse_hvp_args = {
-                    'dataset': self.train,
-                    'sample_weights': sample_weights,
-                    'l2_reg': l2_reg,
-                    'verbose': False,
-                    'verbose_cg': True,
-                }
-                H_inv_grad_loss = model.get_inverse_hvp(grad_loss, **inverse_hvp_args).reshape(-1)
-
-            newton_infl = np.dot(test_grad_loss, H_inv_grad_loss)
-            fixed_test_newton_infl.append(newton_infl)
-
-            if self.num_classes == 2:
-                newton_margin_infl = np.dot(test_grad_margin, H_inv_grad_loss)
-                fixed_test_newton_margin_infl.append(newton_margin_infl)
-
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each fixed test Newton influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
-
-        subset_indices = self.R['subset_indices']
-        res['fixed_test_newton_infl'] = np.array(fixed_test_newton_infl).T
-        res['subset_fixed_test_newton_infl'] = np.array([
-            np.sum(res['fixed_test_newton_infl'][:, remove_indices], axis=1).reshape(-1)
-            for remove_indices in subset_indices])
-
-        if self.num_classes == 2:
-            res['fixed_test_newton_margin_infl'] = np.array(fixed_test_newton_margin_infl).T
-            res['subset_fixed_test_newton_margin_infl'] = np.array([
-                np.sum(res['fixed_test_newton_margin_infl'][:, remove_indices], axis=1).reshape(-1)
-                for remove_indices in subset_indices])
-
-        return res
+        # Merged into the newton phase above to avoid duplicating work
+        return dict()
 
     @phase(11)
     def param_changes(self):
