@@ -31,7 +31,7 @@ def conjugate_gradient(Ax_fn, b,
         cg_callback = lambda x: debug_callback(x, 0.5 * np.dot(x, Ax_fn(x)), -np.dot(b, x))
 
     result = fmin_ncg(f=lambda x: 0.5 * np.dot(x, Ax_fn(x)) - np.dot(b, x),
-                      x0=b,
+                      x0=np.zeros_like(b),
                       fprime=lambda x: Ax_fn(x) - b,
                       fhess_p=lambda x, p: Ax_fn(p),
                       callback=cg_callback,

@@ -778,7 +778,7 @@ class LogisticRegression(Model):
             'inverse_hvp_method': 'explicit',
 
             # Batch size when computing HVP
-            'hvp_batch_size': 4096,
+            'hvp_batch_size': 8192,
 
             # Default parameters to conjugate method for inverse HVP
             'fmin_ncg_avextol': 1e-8,
