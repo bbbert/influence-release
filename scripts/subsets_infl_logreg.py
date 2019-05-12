@@ -5,6 +5,9 @@ from __future__ import unicode_literals
 
 import argparse
 
+import matplotlib as mpl
+mpl.use('Agg')
+
 from experiments.subset_influence import SubsetInfluenceLogreg
 
 if __name__ == "__main__":
