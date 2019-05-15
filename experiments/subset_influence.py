@@ -108,7 +108,7 @@ class SubsetInfluenceLogreg(Experiment):
         regs = np.logspace(np.log10(reg_min), np.log10(reg_max), reg_samples)
         cv_errors = np.zeros_like(regs)
         fold_size = (self.num_train + num_folds - 1) // num_folds
-        folds = [(k * num_folds, min((k + 1) * num_folds, self.num_train)) for k in range(num_folds)]
+        folds = [(k * fold_size, min((k + 1) * fold_size, self.num_train)) for k in range(num_folds)]
 
         for i, reg in enumerate(regs):
             with benchmark("Evaluating CV error for reg={}".format(reg)):
