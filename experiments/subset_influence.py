@@ -107,12 +107,14 @@ class SubsetInfluenceLogreg(Experiment):
 
         regs = np.logspace(np.log10(reg_min), np.log10(reg_max), reg_samples)
         cv_errors = np.zeros_like(regs)
+        cv_accs = np.zeros_like(regs)
         fold_size = (self.num_train + num_folds - 1) // num_folds
-        folds = [(k * num_folds, min((k + 1) * num_folds, self.num_train)) for k in range(num_folds)]
+        folds = [(k * fold_size, min((k + 1) * fold_size, self.num_train)) for k in range(num_folds)]
 
         for i, reg in enumerate(regs):
             with benchmark("Evaluating CV error for reg={}".format(reg)):
                 cv_error = 0.0
+                cv_acc = 0.0
                 for k, fold in enumerate(folds):
                     fold_begin, fold_end = fold
                     train_indices = np.concatenate((np.arange(0, fold_begin), np.arange(fold_end, self.num_train)))
@@ -120,18 +122,25 @@ class SubsetInfluenceLogreg(Experiment):
 
                     model.fit(self.train.subset(train_indices), l2_reg=reg)
                     fold_loss = model.get_total_loss(self.train.subset(val_indices), l2_reg=0)
+                    acc = model.get_accuracy(self.train.subset(val_indices))
                     cv_error += fold_loss
+                    cv_acc += acc
+                    print('Acc: {}, loss: {}'.format(acc, fold_loss))
 
             cv_errors[i] = cv_error
-            print('Cross-validation error is {} for reg={}.'.format(cv_error, reg))
+            cv_accs[i] = cv_acc / num_folds
+            print('Cross-validation acc {}, error {} for reg={}.'.format(cv_accs[i], cv_errors[i], reg))
 
-        best_i = np.argmin(cv_errors)
+        best_i = np.argmax(cv_accs)
         best_reg = regs[best_i]
         print('Cross-validation errors: {}'.format(cv_errors))
-        print('Selecting weight_decay {}, with error {}.'.format(best_reg, cv_errors[best_i]))
+        print('Cross-validation accs: {}'.format(cv_accs))
+        print('Selecting weight_decay {}, with acc{}, error {}.'.format(\
+                best_reg, cv_accs[best_i], cv_errors[best_i]))
 
         res['cv_regs'] = regs
         res['cv_errors'] = cv_errors
+        res['cv_accs'] = cv_accs
         res['cv_l2_reg'] = best_reg
         return res
 
