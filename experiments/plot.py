@@ -31,31 +31,31 @@ def generate_color_cycle(labels):
     return [label_to_color[label] for label in labels], label_to_color
 
 def plot_influence_correlation(ax,
-                               actl,
-                               pred,
+                               x,
+                               y,
                                label=None,
                                alpha=0.5,
                                size=5,
                                colors=None,
                                title="Predicted against actual influence",
-                               subtitle="None",
+                               subtitle=None,
                                xlabel="Actual influence",
                                ylabel="Predicted influence",
                                balanced=False,
                                equal=True,
                                spearmanr=True):
     # Compute data bounds
-    minX, maxX = np.min(actl), np.max(actl)
-    minY, maxY = np.min(pred), np.max(pred)
+    minX, maxX = np.min(x), np.max(x)
+    minY, maxY = np.min(y), np.max(y)
 
     if equal:
         minX = minY = min(minX, minY)
         maxX = maxY = max(maxX, maxY)
 
     if balanced:
-        maxX = np.max(np.abs(minX), np.abs(maxX))
+        maxX = max(np.abs(minX), np.abs(maxX))
         minX = -maxX
-        maxY = np.max(np.abs(minY), np.abs(maxY))
+        maxY = max(np.abs(minY), np.abs(maxY))
         minY = -maxY
 
     # Expand bounds
@@ -79,15 +79,17 @@ def plot_influence_correlation(ax,
 
     # Randomize plot order for colors to show up better
     rng = np.random.RandomState(0)
-    order = np.arange(len(actl))
+    order = np.arange(len(x))
     rng.shuffle(order)
-    actl = actl[order]
-    pred = pred[order]
+    x = x[order]
+    y = y[order]
+    assert len(x) == len(order)
     if colors is not None:
+        assert len(x) == len(colors)
         colors = np.array(colors)[order]
-    
+
     # Plot points
-    ax.scatter(actl, pred, color=colors, alpha=alpha, s=size)
+    ax.scatter(x, y, color=colors, alpha=alpha, s=size)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_xlim([minX - padX, maxX + padX])
@@ -96,7 +98,7 @@ def plot_influence_correlation(ax,
     if subtitle is not None:
         title = title + "\n" + subtitle
     if spearmanr:
-        rho, pval = scipy.stats.spearmanr(actl, pred)
+        rho, pval = scipy.stats.spearmanr(x, y)
         title = title + "\n" + "Spearman $\\rho$ = {}, $p$ = {}".format(rho, pval)
     ax.set_title(title)
 

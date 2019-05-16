@@ -26,7 +26,7 @@ import scipy.cluster.hierarchy as hcluster
 @collect_phases
 class SubsetInfluenceLogreg(Experiment):
     """
-    Test the LogisticRegression model's functionality.
+    Compute various types of influence on subsets of the dataset
     """
     def __init__(self, config, out_dir=None):
         super(SubsetInfluenceLogreg, self).__init__(config, out_dir)

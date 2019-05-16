@@ -58,6 +58,7 @@ class LogisticRegression(Model):
         self.logits, self.params = self.infer(self.input_placeholder, self.labels_placeholder)
         self.params_assigners = get_assigners(self.params)
         self.params_flat = flatten(self.params)
+        self.params_dim = self.params_flat.shape[0]
         self.one_hot_labels = tf.one_hot(self.labels_placeholder, depth=self.num_classes)
         self.total_loss_reg, self.total_loss_no_reg, self.indiv_loss = self.loss(
             self.logits,
@@ -699,19 +700,19 @@ class LogisticRegression(Model):
     def get_model_evaluation(self, dataset, sample_weights=None, l2_reg=0, **kwargs):
         loss_no_reg = self.get_total_loss(dataset, sample_weights, 0, **kwargs)
         loss_reg = loss_no_reg + self.get_loss_reg_term(l2_reg)
-        accuracy = self.get_accuracy(dataset)
+        accuracy = self.get_accuracy(dataset, **kwargs)
         return loss_reg, loss_no_reg, accuracy
 
     def print_model_eval(self, datasets, l2_reg=0):
         params_flat = self.get_params_flat()
 
         train_loss_reg, train_loss_no_reg, train_acc = \
-            self.get_model_evaluation(datasets.train, l2_reg=l2_reg)
+            self.get_model_evaluation(datasets.train, l2_reg=l2_reg, verbose=False)
 
         test_loss_reg, test_loss_no_reg, test_acc = \
-            self.get_model_evaluation(datasets.test, l2_reg=l2_reg)
+            self.get_model_evaluation(datasets.test, l2_reg=l2_reg, verbose=False)
 
-        train_total_grad_loss = self.get_total_grad_loss(datasets.train, l2_reg=l2_reg)
+        train_total_grad_loss = self.get_total_grad_loss(datasets.train, l2_reg=l2_reg, verbose=False)
 
         print('Train loss (w reg) on all data: %s' %
               (train_loss_reg / datasets.train.num_examples))
@@ -727,7 +728,7 @@ class LogisticRegression(Model):
               (np.linalg.norm(train_total_grad_loss) / datasets.train.num_examples))
         print('Norm of the params: %s' % np.linalg.norm(params_flat))
 
-    def get_accuracy(self, dataset):
+    def get_accuracy(self, dataset, **kwargs):
         batch_size = self.config['loss_batch_size']
         accuracy = self.batch_evaluate(
             lambda xs, labels: self.sess.run(self.accuracy, feed_dict={
@@ -735,7 +736,7 @@ class LogisticRegression(Model):
                 self.labels_placeholder: labels,
             }) * len(labels),
             lambda v1, v2: v1 + v2,
-            batch_size, dataset, value_name="Accuracy") / dataset.num_examples
+            batch_size, dataset, value_name="Accuracy", **kwargs) / dataset.num_examples
         return accuracy
 
     def get_predictions(self, X):
