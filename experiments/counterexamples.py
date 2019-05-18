@@ -329,8 +329,8 @@ class Counterexamples(Experiment):
         # For K subsets, find a distribution of test points such that
         # (pred, newton_pred) ~ gaussian
         D = self.R['pred_dparams'].shape[1]
-        K = 10 # not too-overconstrained system
-        S = 10
+        K = D # not too-overconstrained system
+        S = 1 * D + 5
 
         rng = np.random.RandomState(self.config['seed'])
         N_test = 1000

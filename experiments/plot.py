@@ -72,8 +72,8 @@ def plot_influence_correlation(ax,
     if colors is None and label is not None:
         colors, label_to_color = generate_color_cycle(label)
         legend_elements = [ Line2D([0], [0], linewidth=0, marker='o',
-                                   color=label_color, label=label, markersize=5)
-                            for label, label_color in label_to_color.items() ]
+                                   color=label_color, label=label_name, markersize=5)
+                            for label_name, label_color in label_to_color.items() ]
         ax.legend(handles=legend_elements,
                   loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
