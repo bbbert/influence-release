@@ -325,6 +325,18 @@ class Experiment(object):
             self.experiment_id, self.run_id, load_time))
         print()
 
+    def load_phases(self, phase_indices):
+        """
+        Load specific phases from the results of a previously run experiment.
+        """
+        result_paths = [self.get_result_path(phase_index) for phase_index in phase_indices]
+
+        self.results, self.R = dict(), dict()
+        for phase, result_path in zip(self.PHASES, result_paths):
+            if os.path.exists(result_path):
+                self.results[phase.name] = self.load_phase_result(result_path)
+                self.R.update(self.results[phase.name])
+
     @classmethod
     def load_run(cls, run_id, out_dir=None):
         """

@@ -138,3 +138,19 @@ class TaskQueue(object):
         while True:
             time.sleep(1)
             self.work()
+    
+    def collate_results(self, results):
+        keys = set(results[0].keys())
+        all_keys_same = all([set(result.keys()) == keys for result in results])
+        if not all_keys_same:
+            raise ValueError("Could not collate results, not all keys are equal.")
+
+        collated_results = dict()
+        for key in keys:
+            shape = results[0][key].shape
+            if len(shape) == 1:
+                collated_results[key] = np.hstack([result[key] for reult in results])
+            else:
+                collated_results[key] = np.vstack([result[key] for reult in results])
+
+        return collated_results

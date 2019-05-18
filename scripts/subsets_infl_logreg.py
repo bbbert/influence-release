@@ -23,9 +23,12 @@ if __name__ == "__main__":
     # Execution args
     parser.add_argument('--force-refresh', dest='force_refresh', action='store_true',
                         help="Ignore previously saved results")
+    parser.set_defaults(force_refresh=False)
+    parser.add_argument('--worker', dest='worker', action='store_true',
+                        help="Behave only as a worker")
+    parser.set_defaults(worker=False)
     parser.add_argument('--invalidate', default=None, type=int,
                         help="Invalidate phases starting from this phase index")
-    parser.set_defaults(force_refresh=False)
 
     # Experiment args
     parser.add_argument('--dataset-id', default="hospital", type=str,
@@ -122,6 +125,9 @@ if __name__ == "__main__":
         config['skip_param_change_norms'] = True
 
     exp = SubsetInfluenceLogreg(config, out_dir=args.out_dir)
-    exp.run(force_refresh=args.force_refresh,
-            invalidate_phase=args.invalidate)
-    exp.plot_all(save_and_close=True)
+    if args.worker:
+        exp.task_queue.run_worker()
+    else:
+        exp.run(force_refresh=args.force_refresh,
+                invalidate_phase=args.invalidate)
+        exp.plot_all(save_and_close=True)

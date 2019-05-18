@@ -9,6 +9,7 @@ import datasets.mnist
 from datasets.common import DataSet
 from experiments.common import Experiment, collect_phases, phase
 from experiments.benchmark import benchmark
+from experiments.distribute import TaskQueue
 from experiments.plot import *
 from influence.logistic_regression import LogisticRegression
 
@@ -61,6 +62,12 @@ class SubsetInfluenceLogreg(Experiment):
         elif self.subset_choice_type == "range":
             self.subset_min_size = int(self.num_train * self.config['subset_min_rel_size'])
             self.subset_max_size = int(self.num_train * self.config['subset_max_rel_size'])
+
+        tasks_dir = os.path.join(self.base_dir, 'tasks')
+        self.task_queue = TaskQueue(tasks_dir)
+        self.task_queue.define_task('retrain_subsets', self.retrain_subsets)
+        self.task_queue.define_task('self_pred_infl', self.self_pred_infl)
+        self.task_queue.define_task('newton_batch', self.newton_batch)
 
     experiment_id = "ss_logreg"
 
@@ -135,7 +142,7 @@ class SubsetInfluenceLogreg(Experiment):
         best_reg = regs[best_i]
         print('Cross-validation errors: {}'.format(cv_errors))
         print('Cross-validation accs: {}'.format(cv_accs))
-        print('Selecting weight_decay {}, with acc{}, error {}.'.format(\
+        print('Selecting weight_decay {}, with acc {}, error {}.'.format(\
                 best_reg, cv_accs[best_i], cv_errors[best_i]))
 
         res['cv_regs'] = regs
@@ -279,7 +286,7 @@ class SubsetInfluenceLogreg(Experiment):
         return np.array(subsets)
 
     def get_scalar_infl_tails(self, rng, pred_infl, subset_sizes):
-        window = 2 * np.max(subset_sizes)
+        window = int(1.5 * np.max(subset_sizes))
         assert window <= self.num_train
 
         scalar_infl_indices = np.argsort(pred_infl).reshape(-1)
@@ -362,10 +369,19 @@ class SubsetInfluenceLogreg(Experiment):
             tagged_subsets += [('random_same_class-{}'.format(label), s) for s, label in zip(same_class_subsets, same_class_subset_labels)]
 
         with benchmark("Scalar infl tail subsets"):
+            # 1) pick x*N out of the top 1.5 * 0.025 * N where x in (0.0025 - 0.025)
+            # 2) pick x*N out of the top 1.5 * 0.1 * N where x in (0.0025 - 0.1)
+            # 3) pick x*N out of the top 1.5 * 0.25 * N where x in (0.0025 - 0.25)
+            size_1, size_2, size_3, size_4 = list(int(self.num_train * x) for x in (0.0025, 0.025, 0.1, 0.25))
+            subsets_per_phase = self.num_subsets // 3
+            subset_size_phases = [ np.linspace(size_1, size_2, subsets_per_phase).astype(int),
+                                   np.linspace(size_1, size_3, subsets_per_phase).astype(int),
+                                   np.linspace(size_1, size_4, self.num_subsets - 2 * subsets_per_phase).astype(int) ]
             for pred_infl, test_idx in zip(self.R['fixed_test_pred_infl'], self.R['fixed_test']):
-                neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl, subset_sizes)
-                tagged_subsets += [('neg_tail_test-{}'.format(test_idx), s) for s in neg_tail_subsets]
-                tagged_subsets += [('pos_tail_test-{}'.format(test_idx), s) for s in pos_tail_subsets]
+                for phase, subset_sizes in enumerate(subset_size_phases, 1):
+                    neg_tail_subsets, pos_tail_subsets = self.get_scalar_infl_tails(rng, pred_infl, subset_sizes)
+                    tagged_subsets += [('neg_tail_test-{}-{}'.format(phase, test_idx), s) for s in neg_tail_subsets]
+                    tagged_subsets += [('pos_tail_test-{}-{}'.format(phase, test_idx), s) for s in pos_tail_subsets]
                 print('Found scalar infl tail subsets for test idx {}.'.format(test_idx))
 
         with benchmark("Same features subsets"):
@@ -385,23 +401,23 @@ class SubsetInfluenceLogreg(Experiment):
 
         return { 'subset_tags': subset_tags, 'subset_indices': subset_indices }
 
-    @phase(6)
-    def retrain(self):
+    def retrain_subsets(self, subset_start, subset_end):
+        print("Retraining subsets {}-{}".format(subset_start, subset_end))
+        # Workers might need to reload results
+        self.load_phases([0, 5])
+
         model = self.get_model()
         model.load('initial')
         l2_reg = self.R['cv_l2_reg']
         res = dict()
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
-        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
 
         start_time = time.time()
         train_losses, test_losses = [], []
         train_margins, test_margins = [], []
-        for i, remove_indices in enumerate(subset_indices):
-            if (i % n_report == 0):
-                print('Retraining model {} out of {} (tag={}, size={})'.format(
-                    i, n, subset_tags[i], len(remove_indices)))
+        for i, remove_indices in enumerate(subset_indices[subset_start:subset_end], subset_start):
+            print('Retraining model for subset {} out of {} (tag={})'.format(i, len(subset_indices), subset_tags[i]))
 
             s = np.ones(self.num_train)
             s[remove_indices] = 0
@@ -414,30 +430,39 @@ class SubsetInfluenceLogreg(Experiment):
                 train_margins.append(model.get_indiv_margin(self.train))
                 test_margins.append(model.get_indiv_margin(self.test))
 
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_retrain = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_retrain * (n - i - 1)
-                print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
-
+        cur_time = time.time()
+        time_per_retrain = (cur_time - start_time) / (subset_end - subset_start)
+        remaining_time = time_per_retrain * (len(subset_indices) - subset_end)
+        print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
+        
         res['subset_train_losses'] = np.array(train_losses)
         res['subset_test_losses'] = np.array(test_losses)
 
         if self.num_classes == 2:
             res['subset_train_margins'] = np.array(train_margins)
             res['subset_test_margins'] = np.array(test_margins)
-
+        
         return res
 
-    @phase(7)
-    def compute_self_pred_infl(self):
+    @phase(6)
+    def retrain(self):
+        num_subsets = len(self.R['subset_indices'])
+        subsets_per_batch = 32
+        results = self.task_queue.execute('retrain_subsets', [
+            (i, min(i + subsets_per_batch, num_subsets))
+            for i in range(0, num_subsets, subsets_per_batch)])
+
+        return self.task_queue.collate_results(results)
+
+    def self_pred_infl(self, subset_start, subset_end):
+        self.load_phases([0, 1, 3, 5])
+
         model = self.get_model()
         model.load('initial')
         l2_reg = self.R['cv_l2_reg']
         res = dict()
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
-        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
 
         hessian = self.R['hessian']
         inverse_hvp_args = {
@@ -456,9 +481,8 @@ class SubsetInfluenceLogreg(Experiment):
         subset_pred_dparam = []
         self_pred_infls = []
         self_pred_margin_infls = []
-        for i, remove_indices in enumerate(subset_indices):
-            if (i % n_report == 0):
-                print('Computing self-influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
+        for i, remove_indices in enumerate(subset_indices[subset_start:subset_end], subset_start):
+            print('Computing self-influences for subset {} out of {} (tag={})'.format(i, len(subset_indices), subset_tags[i]))
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0)
             H_inv_grad_loss = model.get_inverse_hvp(grad_loss.reshape(-1, 1), **inverse_hvp_args).reshape(-1)
@@ -473,11 +497,10 @@ class SubsetInfluenceLogreg(Experiment):
                 pred_margin_infl = np.dot(grad_margin, H_inv_grad_loss)
                 self_pred_margin_infls.append(pred_margin_infl)
 
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each self-influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
+        cur_time = time.time()
+        time_per_retrain = (cur_time - start_time) / (subset_end - subset_start)
+        remaining_time = time_per_retrain * (len(subset_indices) - subset_end)
+        print('Each self-influence calculation takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
 
         res['subset_pred_dparam'] = np.array(subset_pred_dparam)
         res['subset_self_pred_infl'] = np.array(self_pred_infls)
@@ -485,6 +508,16 @@ class SubsetInfluenceLogreg(Experiment):
             res['subset_self_pred_margin_infl'] = np.array(self_pred_margin_infls)
 
         return res
+
+    @phase(7)
+    def compute_self_pred_infl(self):
+        num_subsets = len(self.R['subset_indices'])
+        subsets_per_batch = 32
+        results = self.task_queue.execute('self_pred_infl', [
+            (i, min(i + subsets_per_batch, num_subsets))
+            for i in range(0, num_subsets, subsets_per_batch)])
+
+        return self.task_queue.collate_results(results)
 
     @phase(8)
     def compute_actl_infl(self):
@@ -524,10 +557,8 @@ class SubsetInfluenceLogreg(Experiment):
 
         return res
 
-    @phase(9)
-    def newton(self):
-        if self.config['skip_newton']:
-            return dict()
+    def newton_batch(self, subset_start, subset_end):
+        self.load_phases([0, 1, 2, 3, 5])
 
         model = self.get_model()
         model.load('initial')
@@ -541,7 +572,6 @@ class SubsetInfluenceLogreg(Experiment):
         # use it to update H_reg(s+w) = H_reg(s) + H(w) instead.
 
         subset_tags, subset_indices = self.R['subset_tags'], self.R['subset_indices']
-        n, n_report = len(subset_indices), max(len(subset_indices) // 100, 1)
 
         hessian = self.R['hessian']
         train_grad_loss = self.R['train_grad_loss']
@@ -559,9 +589,8 @@ class SubsetInfluenceLogreg(Experiment):
         fixed_test_newton_infls = []
         fixed_test_newton_margin_infls = []
         subset_hessian_spectrum = []
-        for i, remove_indices in enumerate(subset_indices):
-            if (i % n_report == 0):
-                print('Computing Newton influences for subset {} out of {} (tag={})'.format(i, n, subset_tags[i]))
+        for i, remove_indices in enumerate(subset_indices[subset_start:subset_end], subset_start):
+            print('Computing Newton influences for subset {} out of {} (tag={})'.format(i, len(subset_indices), subset_tags[i]))
 
             grad_loss = np.sum(train_grad_loss[remove_indices, :], axis=0).reshape(-1, 1)
             if self.config['inverse_hvp_method'] == 'explicit':
@@ -603,11 +632,10 @@ class SubsetInfluenceLogreg(Experiment):
                 fixed_test_newton_margin_infl = np.dot(test_grad_margin, H_inv_grad_loss)
                 fixed_test_newton_margin_infls.append(fixed_test_newton_margin_infl)
 
-            if (i % n_report == 0):
-                cur_time = time.time()
-                time_per_vp = (cur_time - start_time) / (i + 1)
-                remaining_time = time_per_vp * (n - i - 1)
-                print('Each Newton influence calculation takes {} s, {} s remaining'.format(time_per_vp, remaining_time))
+        cur_time = time.time()
+        time_per_retrain = (cur_time - start_time) / (subset_end - subset_start)
+        remaining_time = time_per_retrain * (len(subset_indices) - subset_end)
+        print('Each Newton influence calculation takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
 
         res['subset_newton_dparam'] = np.array(subset_newton_dparam)
         res['subset_self_newton_infl'] = np.array(self_newton_infls)
@@ -620,6 +648,19 @@ class SubsetInfluenceLogreg(Experiment):
             res['subset_hessian_spectrum'] = np.array(subset_hessian_spectrum)
 
         return res
+
+    @phase(9)
+    def newton(self):
+        if self.config['skip_newton']:
+            return dict()
+
+        num_subsets = len(self.R['subset_indices'])
+        subsets_per_batch = 32
+        results = self.task_queue.execute('newton_batch', [
+            (i, min(i + subsets_per_batch, num_subsets))
+            for i in range(0, num_subsets, subsets_per_batch)])
+
+        return self.task_queue.collate_results(results)
 
     @phase(10)
     def fixed_test_newton(self):
