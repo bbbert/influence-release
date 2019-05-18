@@ -47,7 +47,7 @@ class Counterexamples(Experiment):
         rng = np.random.RandomState(self.config['seed'])
 
         # Separated Gaussian mixture
-        N_per_class, D, separation = 20, 5, 0
+        N_per_class, D, separation = 20, 5, 0.5
         separator = rng.normal(0, 1, size=(D,))
         separator = separator * separation / np.linalg.norm(separator) / 2
         def generate_gaussian_mixture():
@@ -107,7 +107,7 @@ class Counterexamples(Experiment):
         res['repeats_N_unique'] = N_unique
 
         # Separated Gaussian mixture, high dimension
-        N_per_class, D, separation = 20, 10, 0
+        N_per_class, D, separation = 20, 10, 1
         separator = rng.normal(0, 1, size=(D,))
         separator = separator * separation / np.linalg.norm(separator) / 2
         def generate_gaussian_mixture():
@@ -329,18 +329,18 @@ class Counterexamples(Experiment):
         # For K subsets, find a distribution of test points such that
         # (pred, newton_pred) ~ gaussian
         D = self.R['pred_dparams'].shape[1]
-        K = D # not too-overconstrained system
-        K = 10
+        K = 10 # not too-overconstrained system
+        S = 10
 
         rng = np.random.RandomState(self.config['seed'])
         N_test = 1000
         cos_indices = np.argsort(self.R['subset_cos_dparams'])
-        easiest = cos_indices[:K]
+        easiest = cos_indices[:S]
         X = []
         A = np.vstack([self.R['pred_dparams'][easiest, :],
                        self.R['newton_pred_dparams'][easiest, :]])
         for u, v in rng.normal(0, 1, (N_test, 2)):
-            B = np.hstack([np.full(K, u), np.full(K, v)])
+            B = np.hstack([np.full(S, u), np.full(S, v)])
             x = np.linalg.lstsq(A, B, rcond=None)[0]
             X.append(x)
         X = np.array(X)
