@@ -669,6 +669,9 @@ class SubsetInfluenceLogreg(Experiment):
 
     @phase(11)
     def param_changes(self):
+        # The later phases do not need task workers
+        self.task_queue.notify_exit()
+
         model = self.get_model()
         res = dict()
 

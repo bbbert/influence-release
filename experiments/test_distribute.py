@@ -76,5 +76,6 @@ class TestDistribute(Experiment):
         results = self.task_queue.execute('random_vector', [
             (i, min(i + seeds_per_batch, num_seeds))
             for i in range(0, num_seeds, seeds_per_batch)])
+        self.task_queue.notify_exit()
 
         return self.task_queue.collate_results(results)

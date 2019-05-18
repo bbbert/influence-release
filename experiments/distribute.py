@@ -30,6 +30,10 @@ class TaskQueue(object):
     def tasks_path(self):
         return os.path.join(self.task_dir, 'all_tasks.pickle')
 
+    @property
+    def exit_path(self):
+        return os.path.join(self.task_dir, 'exit')
+
     def save_all_tasks(self):
         data = { 'tasks': self.tasks, 'num_tasks_by_id': self.num_tasks_by_id }
         with open(self.tasks_path, 'wb') as f:
@@ -138,7 +142,13 @@ class TaskQueue(object):
     def run_worker(self):
         while True:
             time.sleep(1)
+            if os.path.exists(self.exit_path):
+                break
             self.work()
+
+    def notify_exit(self):
+        with open(self.exit_path, 'w') as f:
+            f.write('done')
 
     def collate_results(self, results):
         keys = set(results[0].keys())
