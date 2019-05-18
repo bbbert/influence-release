@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 import os
 import time
 import pickle
+import numpy as np
 
 class TaskQueue(object):
     def __init__(self, task_dir):
@@ -138,7 +139,7 @@ class TaskQueue(object):
         while True:
             time.sleep(1)
             self.work()
-    
+
     def collate_results(self, results):
         keys = set(results[0].keys())
         all_keys_same = all([set(result.keys()) == keys for result in results])

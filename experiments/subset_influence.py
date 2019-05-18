@@ -434,14 +434,14 @@ class SubsetInfluenceLogreg(Experiment):
         time_per_retrain = (cur_time - start_time) / (subset_end - subset_start)
         remaining_time = time_per_retrain * (len(subset_indices) - subset_end)
         print('Each retraining takes {} s, {} s remaining'.format(time_per_retrain, remaining_time))
-        
+
         res['subset_train_losses'] = np.array(train_losses)
         res['subset_test_losses'] = np.array(test_losses)
 
         if self.num_classes == 2:
             res['subset_train_margins'] = np.array(train_margins)
             res['subset_test_margins'] = np.array(test_margins)
-        
+
         return res
 
     @phase(6)
