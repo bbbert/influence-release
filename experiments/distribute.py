@@ -160,8 +160,8 @@ class TaskQueue(object):
         for key in keys:
             shape = results[0][key].shape
             if len(shape) == 1:
-                collated_results[key] = np.hstack([result[key] for reult in results])
+                collated_results[key] = np.hstack([result[key] for result in results])
             else:
-                collated_results[key] = np.vstack([result[key] for reult in results])
+                collated_results[key] = np.vstack([result[key] for result in results])
 
         return collated_results
